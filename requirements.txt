@@ -1,0 +1,6 @@
+yfinance
+pandas
+numpy
+matplotlib
+torch
+pyro

@@ -6,5 +6,5 @@
  - [Pyro](https://pyro.ai/)
  - 
 
-* NOTE 
+* NOTE  
 This project is the result of a Capstone project in WorldQuant University. 

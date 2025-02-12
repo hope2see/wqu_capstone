@@ -6,7 +6,12 @@
  - [Pyro](https://pyro.ai/)
  - [PyTorch](https://pytorch.org/) 
 
-   
+
+Install & Testing 
+ - Time-Series-Library should be downloaded under the current folder as ./Time-Series-Library
+ - git clone https://github.com/thuml/Time-Series-Library.git
+
+
 
 #### NOTE  
 - This project is the result of a Capstone project in WorldQuant University. 

@@ -4,6 +4,7 @@
  - [Time-Series-Library](https://github.com/thuml/Time-Series-Library)
  - [Bayesian Optimization-Based Dynamic Ensemble (BODE)](https://github.com/Robinpredict/Bayesian-optimization-based-dynamic-ensemble-for-time-series-forecasting)
  - [Pyro](https://pyro.ai/)
+ - [PyTorch](https://pytorch.org/) 
 
    
 

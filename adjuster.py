@@ -22,8 +22,9 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-from dataset_loader import data_provider
+from dataset_loader import get_data_provider
 from combiner import CombinerModel
+from mem_util import MemUtil
 
 
 smoke_test = "CI" in os.environ  # ignore; used to check code integrity in the Pyro repo
@@ -46,7 +47,14 @@ class AdjusterModel(object):
             )
         self.kernel = gpm_kernel 
         self.gpm = None # Gaussain Process Model 
+        self.dataset = {}
+        self.dataloader = {}
         self.last_y = None
+
+    def _get_data(self, flag):
+        if flag not in self.dataset:
+            self.dataset[flag], self.dataloader[flag] = get_data_provider(self.configs, flag)
+        return self.dataset[flag], self.dataloader[flag]
 
     # NOTE: TBD
     def _select_criterion(self):
@@ -91,35 +99,22 @@ class AdjusterModel(object):
         return exp_deviation
 
 
-    # def _train_gpmodel(self, y):
-    #     if self.last_y is not None:
-    #         y = torch.cat([self.last_y, y])
-    #         if len(y) > self.FITTING_WINDOW:
-    #             y = y[-self.FITTING_WINDOW:] 
-    #     self.last_y = y
-    #     self.gpm = SARIMAX(y.numpy(), order=(1,1,1), trend='ct', enforce_stationarity=False).fit(disp=False)
-
-    # def _predict_next(self):
-    #     pred_deviation = self.gpm.forecast(steps=1)
-    #     return torch.Tensor(pred_deviation)
-
-
     def train(self):
         # NOTE
         # For training adjusrter model , we use the data in validation period of the base models.
         # The data is also used for training combiner model, it doesn't matter because... TODO
-        train_dataset, train_loader = data_provider(self.configs, flag='ensemble_train', step_by_step=True)
+        train_dataset, train_loader = get_data_provider(self.configs, flag='ensemble_train', step_by_step=True)
         y = train_dataset.data_y[self.configs.seq_len:, -1]
         assert len(y) == len(train_loader)
 
         y_hat_cbm = np.empty_like(y)
-        # losses_cbm = np.empty_like(y)
         criterion = self._select_criterion()
+
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
-            _, y_hat_t, _ = self.combiner_model.proceed_onestep(
+            y_hat_t, _ = self.combiner_model.proceed_onestep(
                 batch_x, batch_y, batch_x_mark, batch_y_mark, criterion)
             y_hat_cbm[t] = y_hat_t
-            # losses_cbm[t] = loss_t
+            MemUtil.print_memory_usage()
 
         # Gaussian Process model is to used to predict next deviation from past predctions
         deviations = y - y_hat_cbm
@@ -133,7 +128,7 @@ class AdjusterModel(object):
         pred_deviation = self._predict_next()
 
         # get combiner model's predition
-        loss_cbm, y_hat_cbm, y_hat_bsm = self.combiner_model.proceed_onestep(
+        y_hat_cbm, y_hat_bsm = self.combiner_model.proceed_onestep(
             batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training)                
 
         # adjust combinerModel's prediction by adding expected deviation 
@@ -141,49 +136,48 @@ class AdjusterModel(object):
 
         # calculate the actuall loss of next timestep
         y = batch_y[0, -1, -1] 
-        loss = criterion(torch.tensor(y_hat), y).item()
+        # loss = criterion(torch.tensor(y_hat), y).item()
 
         if training:
             true_deviation = torch.tensor([y.item() - y_hat_cbm])
             self._train_gpmodel(true_deviation)
 
-        return loss, y_hat, loss_cbm, y_hat_cbm, y_hat_bsm
+        return y_hat, y_hat_cbm, y_hat_bsm
 
 
     def test(self):
-        test_data, test_loader = data_provider(self.configs, flag='test', step_by_step=True)
-        y = test_data.data_y[self.configs.seq_len:, -1]
-        need_to_invert_data = True if (test_data.scale and self.configs.inverse) else False
+        test_set, test_loader = get_data_provider(self.configs, flag='test', step_by_step=True)
+        y = test_set.data_y[self.configs.seq_len:, -1]
+        need_to_invert_data = True if (test_set.scale and self.configs.inverse) else False
 
         y_hat = np.empty_like(y)
-        losses = np.empty_like(y)
         y_hat_cbm = np.empty_like(y)
-        losses_cbm = np.empty_like(y)
         y_hat_bsm = np.empty((len(self.combiner_model.basemodels), len(y)))
-        # losses_bsm = np.empty_like(y)
 
         criterion = self._select_criterion()
+
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
-            losses[t], y_hat[t], losses_cbm[t], y_hat_cbm[t], y_hat_bsm[:,t] = \
-                self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training=True)
+            y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t] = \
+                self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training=True)            
+            MemUtil.print_memory_usage()
 
         if need_to_invert_data:
-            n_features = test_data.data_y.shape[1]
+            n_features = test_set.data_y.shape[1]
             data_y = np.zeros((len(y), n_features))
             data_y_hat = np.zeros((len(y), n_features))
             data_y_hat_cbm = np.zeros((len(y), n_features))
             data_y[:, -1] = y
             data_y_hat[:, -1] = y_hat
             data_y_hat_cbm[:, -1] = y_hat_cbm
-            y = test_data.inverse_transform(data_y)[:, -1]
-            y_hat = test_data.inverse_transform(data_y_hat)[:, -1]
-            y_hat_cbm = test_data.inverse_transform(data_y_hat_cbm)[:, -1]
+            y = test_set.inverse_transform(data_y)[:, -1]
+            y_hat = test_set.inverse_transform(data_y_hat)[:, -1]
+            y_hat_cbm = test_set.inverse_transform(data_y_hat_cbm)[:, -1]
             for i in range(len(y_hat_bsm)):
                 data_y_hat_bsm = np.zeros((len(y), n_features))
                 data_y_hat_bsm[:, -1] = y_hat_bsm[i]
-                y_hat_bsm[i] = test_data.inverse_transform(data_y_hat_bsm)[:, -1]
+                y_hat_bsm[i] = test_set.inverse_transform(data_y_hat_bsm)[:, -1]
 
-        return y, y_hat, losses, y_hat_cbm, losses_cbm, y_hat_bsm
+        return y, y_hat, y_hat_cbm, y_hat_bsm
 
 
     def plot_gpmodel(self, plot_observed_data=True, plot_predictions=True, n_test=500, x_range=None):

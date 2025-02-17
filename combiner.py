@@ -11,9 +11,10 @@ from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
 from models import TimesNet, DLinear, PatchTST, iTransformer, TimeMixer, TSMixer
 
-from dataset_loader import data_provider
+from dataset_loader import get_data_provider
 
 from basemodels import NeurlNetModel, StatisticalModel
+
 
 # warnings.filterwarnings('ignore')
 
@@ -31,6 +32,8 @@ import matplotlib.pyplot as plt
 
 import warnings
 warnings.filterwarnings('ignore')
+
+from mem_util import MemUtil
 
 
 class Metric:
@@ -276,17 +279,19 @@ class CombinerModel(object):
         # Train combiner model -------------------------------------
         time_now = time.time()
 
-        train_dataset, train_loader = data_provider(self.configs, flag='ensemble_train', step_by_step=True)
+        train_dataset, train_loader = get_data_provider(self.configs, flag='ensemble_train', step_by_step=True)
 
         # prepare the forecasted values of base models         
         basemodel_preds = np.empty((len(self.basemodels), len(train_loader)))
         basemodel_losses = np.empty((len(self.basemodels), len(train_loader)))
         criterion = self._select_criterion()
+
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
             for m, basemodel in enumerate(self.basemodels):
                 basemodel_losses[m, t], basemodel_preds[m, t] = basemodel.proceed_onestep(
                     batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, 
                     training=True) # NOTE : Base models ARE trained in ensemble_training period.
+            MemUtil.print_memory_usage()
 
         spent_time = (time.time() - time_now) 
         print(f'CombinerModel.train() : {spent_time:.4f}sec elapsed for getting predition data from base models')
@@ -332,17 +337,17 @@ class CombinerModel(object):
 
         y_hat = np.dot(comp_weights, basemodel_preds)
         y = batch_y[0, -1, -1] 
-        loss = criterion(torch.tensor(y_hat), y).item()
+        # loss = criterion(torch.tensor(y_hat), y).item()
 
         self.last_comp_weights = comp_weights
         self.last_basemodel_losses = basemodel_losses[:, -self.max_lookback_window_size:] 
-        return loss, y_hat, basemodel_preds
+        return y_hat, basemodel_preds
 
 
     def test(self):
         time_now = time.time()
 
-        test_data, test_loader = data_provider(self.configs, flag='test', step_by_step=True)
+        test_data, test_loader = get_data_provider(self.configs, flag='test', step_by_step=True)
         y = test_data.data_y[self.configs.seq_len:, -1]
         need_to_invert_data = True if (test_data.scale and self.configs.inverse) else False
 
@@ -352,7 +357,7 @@ class CombinerModel(object):
         criterion = self._select_criterion()
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
             for m, basemodel in enumerate(self.basemodels):
-                basemodel_losses[m, t], basemodel_preds[m, t] = basemodel.proceed_onestep(
+                basemodel_preds[m, t] = basemodel.proceed_onestep(
                     batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training=True)      
                 
         # compute CombinerModel's predictions

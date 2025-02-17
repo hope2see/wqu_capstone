@@ -16,13 +16,16 @@ from utils.dtw_metric import dtw, accelerated_dtw
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
 
-from dataset_loader import data_provider
+from dataset_loader import get_data_provider
 
 warnings.filterwarnings('ignore')
 
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
+# # For memory usage tracking 
+# import psutil
+# import tracemalloc
 
 
 class BaseModel(object):
@@ -121,8 +124,7 @@ class NeurlNetModel(BaseModel):
         return device
 
     def _get_data(self, flag):
-        data_set, data_loader = data_provider(self.configs, flag)
-        return data_set, data_loader
+        return get_data_provider(self.configs, flag)
 
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.configs.learning_rate)
@@ -223,7 +225,7 @@ class NeurlNetModel(BaseModel):
             train_loss = np.average(train_loss)
             vali_loss = self._validate(vali_data, vali_loader, criterion)
 
-            print(f"Epoch: {epoch + 1}, | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f}")
+            print(f"Epoch: {epoch + 1} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f}")
 
             early_stopping(vali_loss, self.model, path)
             if early_stopping.early_stop:

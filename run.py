@@ -7,7 +7,6 @@
 import os 
 import argparse
 from utils.print_args import print_args
-# from data_provider import data_factory, data_loader
 from models import TimesNet, DLinear, PatchTST, iTransformer, TimeXer, TSMixer
 # from utils.losses import mape_loss, mase_loss, smape_loss
 from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
@@ -23,6 +22,8 @@ from torch import optim
 from basemodels import EtsModel, SarimaModel, NeurlNetModel
 from combiner import CombinerModel
 from adjuster import AdjusterModel
+from mem_util import MemUtil
+
 
 def get_setting_str(args):
     setting_str = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_expand{}_dc{}_fc{}_eb{}_dt{}_{}'.format(
@@ -265,6 +266,9 @@ def run(args=None):
     configs = parse_cmd_args(args)
     set_device_configs(configs)
 
+    MemUtil.start_python_memory_tracking()
+    MemUtil.print_memory_usage()
+
     print('\nConfigurations =================================')
     print_args(configs)
 
@@ -280,8 +284,8 @@ def run(args=None):
     dLinearModel = NeurlNetModel(configs, "DLinear", DLinear)
     iTransformerModel = NeurlNetModel(configs, "iTransformer", iTransformer)
     timeXerModel = NeurlNetModel(configs, "TimeXer", TimeXer)
-    # basemodels = [etsModel, sarimaModel, dLinearModel]
-    basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
+    basemodels = [etsModel, sarimaModel, iTransformerModel]
+    # basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
     # basemodels = [etsModel, sarimaModel]
 
     setting_str = get_setting_str(configs)
@@ -304,14 +308,19 @@ def run(args=None):
         for basemodel in basemodels:
             basemodel.load_saved_model(setting_str)
 
+    MemUtil.print_memory_usage()
+
     print('\nTraining combiner model ======================')
     combinerModel.train()
+    MemUtil.print_memory_usage()
 
     print('\nTraining adjuster model ======================')
     adjusterModel.train()
+    MemUtil.print_memory_usage()
 
     print('\nTesting ==================================')
-    y, y_hat, losses, y_hat_cbm, losses_cbm, y_hat_bsm = adjusterModel.test()
+    y, y_hat, y_hat_cbm, y_hat_bsm = adjusterModel.test()
+    MemUtil.print_memory_usage()
 
     report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, filepath="./result_losses.txt")
 
@@ -323,6 +332,8 @@ def run(args=None):
 
     # clean-up cache 
     cleanup_gpu_cache(configs)
+
+    MemUtil.stop_python_memory_tracking()
 
     print('Bye ~~~~~~')
 

@@ -7,10 +7,11 @@
  - [PyTorch](https://pytorch.org/) 
 
 
-Install & Testing 
- - Time-Series-Library should be downloaded under the current folder as ./Time-Series-Library
- - git clone https://github.com/thuml/Time-Series-Library.git
-
+### Usage (Install & Testing)
+- Use test_TABE.ipynb 
+- Or, manually download Time-Series-Library from the link below, and execute run.py 
+  Time-Series-Library should be downloaded under the current folder as ./Time-Series-Library
+  git clone https://github.com/thuml/Time-Series-Library.git
 
 
 #### NOTE  

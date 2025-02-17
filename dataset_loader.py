@@ -1,23 +1,10 @@
-
-# from data_provider.data_loader import Dataset_ETT_hour, Dataset_ETT_minute, Dataset_Custom, Dataset_M4, PSMSegLoader, \
-#     MSLSegLoader, SMAPSegLoader, SMDSegLoader, SWATSegLoader, UEAloader
-# from data_provider.uea import collate_fn
-from torch.utils.data import DataLoader
-
 import os
 import numpy as np
 import pandas as pd
-import glob
-import re
-import torch
+from utils.timefeatures import time_features
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
-from utils.timefeatures import time_features
-# from data_provider.m4 import M4Dataset, M4Meta
-# from data_provider.uea import subsample, interpolate_missing, Normalizer
-from sktime.datasets import load_from_tsfile_to_dataframe
 import warnings
-# from utils.augmentation import run_augmentation_single
 
 warnings.filterwarnings('ignore')
 
@@ -152,7 +139,7 @@ data_dict = {
 }
 
 
-def data_provider(args, flag, step_by_step=False):
+def _data_provider(args, flag, step_by_step=False):
     Data = data_dict[args.data]
     timeenc = 0 if args.embed != 'timeF' else 1
 
@@ -178,6 +165,7 @@ def data_provider(args, flag, step_by_step=False):
             num_workers=args.num_workers,
             drop_last=drop_last)
         return data_set, data_loader
+    
     elif args.task_name == 'classification':
         drop_last = False
         data_set = Data(
@@ -219,3 +207,17 @@ def data_provider(args, flag, step_by_step=False):
             drop_last=drop_last)
         return data_set, data_loader
 
+
+# Return (Dataset, DataLoader) tuple for the given parameters. 
+# We assume that the values of 'args' are always the same. 
+# If a (Dataset, DataLoader) correspoinding to the 'flag' and 'step_by_step' parameters
+# has been created before, then the cached objects are retunred. 
+_cache_dataset = {}
+_cache_dataloader = {}
+def get_data_provider(args, flag, step_by_step=False):
+    key = flag
+    if step_by_step:
+        key += '_stb'
+    if key not in _cache_dataset:
+        _cache_dataset[key], _cache_dataloader[key] = _data_provider(args, flag, step_by_step)
+    return _cache_dataset[key], _cache_dataloader[key]

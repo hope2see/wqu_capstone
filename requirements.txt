@@ -1,3 +1,20 @@
+# for TSLib
+einops
+local-attention
+matplotlib
+numpy
+pandas
+patool
+reformer-pytorch
+scikit-learn
+scipy
+sktime
+sympy
+torch
+tqdm
+PyWavelets
+
+# For TABE
 yfinance
 pandas
 numpy

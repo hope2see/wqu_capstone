@@ -3,4 +3,4 @@ pandas
 numpy
 matplotlib
 torch
-pyro
+pyro-ppl

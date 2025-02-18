@@ -236,17 +236,16 @@ def plot_weights(weights_hist, title=None):
 class CombinerModel(object):
     max_lookback_window_size = 15
 
-    def __init__(self, configs, basemodels, result_dir):
+    def __init__(self, configs, basemodels):
         self.configs = configs
         self.basemodels = basemodels
-        self.result_dir = result_dir
 
         self.stat_models, self.nn_models = self.seperate_models()
         # Hyperparameter Space
         self.hp_space = {
             # 'cool_start': hp.quniform('cool_start', 0, num_comps-1, 1),
             'lookback_window_size': hp.quniform('lookback_window_size', 1, self.max_lookback_window_size, 1),
-            'max_components': hp.quniform('max_components', 1, len(basemodels), 1),
+            'max_components': hp.quniform('max_components', 2, len(basemodels), 1),
             'metric': hp.choice('metric', [Metric.MAE, Metric.MSE]),
             'weighting_method': hp.choice('weighting_method', 
                                             [WeightingMethod.Inverted, WeightingMethod.SquaredInverted, WeightingMethod.Softmax]),

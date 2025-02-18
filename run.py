@@ -284,8 +284,8 @@ def run(args=None):
     dLinearModel = NeurlNetModel(configs, "DLinear", DLinear)
     iTransformerModel = NeurlNetModel(configs, "iTransformer", iTransformer)
     timeXerModel = NeurlNetModel(configs, "TimeXer", TimeXer)
-    basemodels = [etsModel, sarimaModel, iTransformerModel]
-    # basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
+    # basemodels = [etsModel, sarimaModel, iTransformerModel]
+    basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
     # basemodels = [etsModel, sarimaModel]
 
     setting_str = get_setting_str(configs)

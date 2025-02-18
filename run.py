@@ -278,20 +278,21 @@ def run(args=None):
     torch.manual_seed(fix_seed)
     np.random.seed(fix_seed)
 
+    setting_str = get_setting_str(configs)
+
     # create base models 
     etsModel = EtsModel(configs)
     sarimaModel = SarimaModel(configs)
-    dLinearModel = NeurlNetModel(configs, "DLinear", DLinear)
-    iTransformerModel = NeurlNetModel(configs, "iTransformer", iTransformer)
-    timeXerModel = NeurlNetModel(configs, "TimeXer", TimeXer)
+    dLinearModel = NeurlNetModel(configs, "DLinear", DLinear, setting_str)
+    iTransformerModel = NeurlNetModel(configs, "iTransformer", iTransformer, setting_str)
+    timeXerModel = NeurlNetModel(configs, "TimeXer", TimeXer, setting_str)
     # basemodels = [etsModel, sarimaModel, iTransformerModel]
     basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
     # basemodels = [etsModel, sarimaModel]
 
-    setting_str = get_setting_str(configs)
-
+    
     # create combiner model
-    combinerModel = CombinerModel(configs, basemodels, setting_str)
+    combinerModel = CombinerModel(configs, basemodels)
 
     # create adjuster model 
     adjusterModel = AdjusterModel(configs, combinerModel)
@@ -302,11 +303,11 @@ def run(args=None):
         for basemodel in basemodels:
             # TODO : Better to optimize the the reduncancy of the same proceudures in training base models. 
             print(f'\nTraining {basemodel.name} ...')
-            basemodel.train(setting_str)
+            basemodel.train()
     else:
         print('\nLoading trained base models ======================')
         for basemodel in basemodels:
-            basemodel.load_saved_model(setting_str)
+            basemodel.load_saved_model()
 
     MemUtil.print_memory_usage()
 

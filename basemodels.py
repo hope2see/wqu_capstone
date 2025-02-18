@@ -38,7 +38,7 @@ class BaseModel(object):
         raise NotImplementedError
 
     # @abstractmethod
-    def test(self, save_dir):
+    def test(self):
         raise NotImplementedError
 
     # @abstractmethod
@@ -61,10 +61,10 @@ class StatisticalModel(BaseModel):
 
     # Statistical Models do not need to be trained, 
     # since they can fit with the 'seq_len' number of data points when prediction is needed.
-    def train(self, save_dir):
+    def train(self):
         pass
 
-    def load_saved_model(self, setting_str=None):
+    def load_saved_model(self):
         pass
 
     def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training: bool = False):
@@ -98,10 +98,12 @@ class SarimaModel(StatisticalModel):
 
 # Written by referencing Time-Series-Library/exp_longterm_forecasting.py,exp_basic.py
 class NeurlNetModel(BaseModel):
-    def __init__(self, configs, name, model):
+    def __init__(self, configs, name, model, setting_str):
         super().__init__(configs, name)
         self.device = self._acquire_device()
         self.model = self._build_model(model).to(self.device)
+        self.setting_str = setting_str
+        self.early_stopping = None
 
     def _build_model(self, model):
         model = model.Model(self.configs).float()
@@ -134,6 +136,24 @@ class NeurlNetModel(BaseModel):
         criterion = nn.MSELoss()
         return criterion
 
+    def _get_checkpoint_path(self):
+        path = os.path.join(self.configs.checkpoints, self.setting_str) # path = checkpoints_path + "/" + settings_str
+        path = os.path.join(path, self.name) # path = path + "/" + model_name
+        if not os.path.exists(path):
+            os.makedirs(path)
+        return path
+
+    def load_saved_model(self):
+        print('loading model')
+        path = self._get_checkpoint_path() + '/checkpoint.pth'
+        self.model.load_state_dict(torch.load(path))
+
+    def _get_result_path(self):
+        path = os.path.join("./result", self.setting_str) # path = "./result" + "/" + settings_str
+        path = os.path.join(path, self.name) # path = path + "/" + model_name
+        if not os.path.exists(path):
+            os.makedirs(path)
+        return path
 
     def _forward_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion):
         batch_x = batch_x.float().to(self.device)
@@ -179,29 +199,18 @@ class NeurlNetModel(BaseModel):
         return loss, pred
 
 
-    def load_saved_model(self, setting_str):
-        print('loading model')
-        path = os.path.join(self.configs.checkpoints, setting_str) + '/checkpoint.pth'
-        self.model.load_state_dict(torch.load(path))
-
     # NOTE 
     # Is it okay to train repeatitively with the same one batch?? 
     # Or, do we have to use all 'train period' datapoint? 
     def _train_batch_with_validation(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion):
         vali_data, vali_loader = self._get_data(flag='val')
 
-        # path = os.path.join(self.configs.checkpoints, setting_str)
-        path = os.path.join(self.configs.checkpoints, "temp_checkpoints")
-        if not os.path.exists(path):
-            os.makedirs(path)
-
         time_now = time.time()
 
-        train_steps = 1 # len(train_loader)
-        early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True)
+        if self.early_stopping is None :
+            self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True)
 
         model_optim = self._select_optimizer()
-        # criterion = self._select_criterion()
 
         if self.configs.use_amp:
             scaler = torch.cuda.amp.GradScaler()
@@ -227,8 +236,8 @@ class NeurlNetModel(BaseModel):
 
             print(f"Epoch: {epoch + 1} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f}")
 
-            early_stopping(vali_loss, self.model, path)
-            if early_stopping.early_stop:
+            self.early_stopping(vali_loss, self.model, self._get_checkpoint_path())
+            if self.early_stopping.early_stop:
                 print("Early stopping")
                 break
 
@@ -236,22 +245,19 @@ class NeurlNetModel(BaseModel):
 
         print(f"_train_batch_with_validation: cost time: {time.time() - time_now}")
 
-        best_model_path = path + '/' + 'checkpoint.pth'
-        self.model.load_state_dict(torch.load(best_model_path))
+        # load the best model found
+        self.load_saved_model() 
 
 
-    def train(self, setting_str):
+    def train(self):
         train_data, train_loader = self._get_data(flag='base_train')
         vali_data, vali_loader = self._get_data(flag='val')
-
-        path = os.path.join(self.configs.checkpoints, setting_str)
-        if not os.path.exists(path):
-            os.makedirs(path)
 
         time_now = time.time()
 
         train_steps = len(train_loader)
-        early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True)
+        if self.early_stopping is None :
+            self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True)
 
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
@@ -295,15 +301,15 @@ class NeurlNetModel(BaseModel):
             print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f}".format(
                 epoch + 1, train_steps, train_loss, vali_loss))
 
-            early_stopping(vali_loss, self.model, path)
-            if early_stopping.early_stop:
+            self.early_stopping(vali_loss, self.model, self._get_checkpoint_path())
+            if self.early_stopping.early_stop:
                 print("Early stopping")
                 break
 
             adjust_learning_rate(model_optim, epoch + 1, self.configs)
 
-        best_model_path = path + '/' + 'checkpoint.pth'
-        self.model.load_state_dict(torch.load(best_model_path))
+        # load the best model found
+        self.load_saved_model() 
     
 
     # NOTE: 
@@ -349,18 +355,14 @@ class NeurlNetModel(BaseModel):
     # So, test() can be called without 'vali_data' being used for train the model. 
     # Given the fact that test_data is actually those data that comes after vali_data, 
     # is it okay to exclude vali_data for training the model?
-    def test(self, setting, load_saved_model=False):
+    def test(self, load_saved_model=False):
         if load_saved_model:
-            # self.model.load_state_dict(torch.load(os.path.join('./checkpoints/' + setting, 'checkpoint.pth')))
-            self.load_saved_model(setting)
+            self.load_saved_model()
 
         test_data, test_loader = self._get_data(flag='test')
 
         preds = []
         trues = []
-        folder_path = './test_results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
 
         self.model.eval()
         with torch.no_grad():
@@ -408,7 +410,7 @@ class NeurlNetModel(BaseModel):
                         input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
                     gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
                     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(folder_path, str(i) + '.pdf'))
+                    visual(gt, pd, os.path.join(result_path, str(i) + '.pdf'))
 
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
@@ -416,11 +418,6 @@ class NeurlNetModel(BaseModel):
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
         print('test shape:', preds.shape, trues.shape)
-
-        # result save
-        folder_path = './results/' + setting + '/'
-        if not os.path.exists(folder_path):
-            os.makedirs(folder_path)
 
         # dtw calculation
         if self.configs.use_dtw:
@@ -440,15 +437,17 @@ class NeurlNetModel(BaseModel):
         mae, mse, rmse, mape, mspe = metric(preds, trues)
         print('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
         f = open("result_long_term_forecast.txt", 'a')
-        f.write(setting + "  \n")
+        f.write(self.setting_str + "  \n")
         f.write('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
         f.write('\n')
         f.write('\n')
         f.close()
 
-        np.save(folder_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(folder_path + 'pred.npy', preds)
-        np.save(folder_path + 'true.npy', trues)
+        result_path = self._get_result_path()
+
+        np.save(result_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
+        np.save(result_path + 'pred.npy', preds)
+        np.save(result_path + 'true.npy', trues)
 
         return preds
 

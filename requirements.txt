@@ -1,4 +1,4 @@
-# for TSLib
+# For Time-Series-Library
 einops
 local-attention
 matplotlib
@@ -14,10 +14,7 @@ torch
 tqdm
 PyWavelets
 
-# For TABE
+# Added for TABE
 yfinance
-pandas
-numpy
-matplotlib
-torch
+hyperopt
 pyro-ppl

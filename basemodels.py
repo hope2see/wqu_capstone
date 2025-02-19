@@ -1,6 +1,3 @@
-# import sys
-# # Add Time-Series-Library directory to module lookup paths
-# sys.path.append('Time-Series-Library')
 
 import os
 import numpy as np
@@ -13,46 +10,24 @@ import warnings
 import numpy as np
 from utils.dtw_metric import dtw, accelerated_dtw
 
-from utils.tools import EarlyStopping, adjust_learning_rate, visual
+from utils.tools import adjust_learning_rate, visual
 from utils.metrics import metric
 
+from misc_util import EarlyStopping
 from dataset_loader import get_data_provider
 
-warnings.filterwarnings('ignore')
+from abstractmodel import AbstractModel
 
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-# # For memory usage tracking 
-# import psutil
-# import tracemalloc
-
-
-class BaseModel(object):
-    def __init__(self, configs, name):
-        self.configs = configs
-        self.name = name
-
-    # @abstractmethod
-    def train(self):
-        raise NotImplementedError
-
-    # @abstractmethod
-    def test(self):
-        raise NotImplementedError
-
-    # @abstractmethod
-    def proceed_onestep(self, training: bool = False):
-        raise NotImplementedError
-
-    def load_saved_model(self, setting_str=None):
-        pass
+warnings.filterwarnings('ignore')
 
 
 # NOTE 
 # Statistical models (ETS, and SARIMA) are available only for univariate forecasting,
 # So, they are fitted only using the target variable.
-class StatisticalModel(BaseModel):
+class StatisticalModel(AbstractModel):
     def __init__(self, configs, name):
         super().__init__(configs, name) 
 
@@ -95,14 +70,12 @@ class SarimaModel(StatisticalModel):
         return SARIMAX(endog_y, order=(1,1,0), trend='ct', enforce_stationarity=False).fit(disp=False)
     
 
-
 # Written by referencing Time-Series-Library/exp_longterm_forecasting.py,exp_basic.py
-class NeurlNetModel(BaseModel):
-    def __init__(self, configs, name, model, setting_str):
+class NeurlNetModel(AbstractModel):
+    def __init__(self, configs, name, model):
         super().__init__(configs, name)
         self.device = self._acquire_device()
         self.model = self._build_model(model).to(self.device)
-        self.setting_str = setting_str
         self.early_stopping = None
 
     def _build_model(self, model):
@@ -125,35 +98,14 @@ class NeurlNetModel(BaseModel):
             print('Use CPU')
         return device
 
-    def _get_data(self, flag):
-        return get_data_provider(self.configs, flag)
-
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.configs.learning_rate)
         return model_optim
-
-    def _select_criterion(self):
-        criterion = nn.MSELoss()
-        return criterion
-
-    def _get_checkpoint_path(self):
-        path = os.path.join(self.configs.checkpoints, self.setting_str) # path = checkpoints_path + "/" + settings_str
-        path = os.path.join(path, self.name) # path = path + "/" + model_name
-        if not os.path.exists(path):
-            os.makedirs(path)
-        return path
 
     def load_saved_model(self):
         print('loading model')
         path = self._get_checkpoint_path() + '/checkpoint.pth'
         self.model.load_state_dict(torch.load(path))
-
-    def _get_result_path(self):
-        path = os.path.join("./result", self.setting_str) # path = "./result" + "/" + settings_str
-        path = os.path.join(path, self.name) # path = path + "/" + model_name
-        if not os.path.exists(path):
-            os.makedirs(path)
-        return path
 
     def _forward_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion):
         batch_x = batch_x.float().to(self.device)
@@ -203,12 +155,14 @@ class NeurlNetModel(BaseModel):
     # Is it okay to train repeatitively with the same one batch?? 
     # Or, do we have to use all 'train period' datapoint? 
     def _train_batch_with_validation(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion):
-        vali_data, vali_loader = self._get_data(flag='val')
+        vali_data, vali_loader = get_data_provider(self.configs, flag='val')
 
         time_now = time.time()
 
         if self.early_stopping is None :
             self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True)
+        else:
+            self.early_stopping.reset()
 
         model_optim = self._select_optimizer()
 
@@ -250,14 +204,16 @@ class NeurlNetModel(BaseModel):
 
 
     def train(self):
-        train_data, train_loader = self._get_data(flag='base_train')
-        vali_data, vali_loader = self._get_data(flag='val')
+        train_data, train_loader =  get_data_provider(self.configs, flag='base_train')
+        vali_data, vali_loader = get_data_provider(self.configs, flag='val')
 
         time_now = time.time()
 
         train_steps = len(train_loader)
         if self.early_stopping is None :
             self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True)
+        else:
+            self.early_stopping.reset()
 
         model_optim = self._select_optimizer()
         criterion = self._select_criterion()
@@ -359,7 +315,7 @@ class NeurlNetModel(BaseModel):
         if load_saved_model:
             self.load_saved_model()
 
-        test_data, test_loader = self._get_data(flag='test')
+        test_data, test_loader = get_data_provider(self.configs, flag='test')
 
         preds = []
         trues = []

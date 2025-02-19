@@ -23,6 +23,7 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 from dataset_loader import get_data_provider
+from abstractmodel import AbstractModel
 from combiner import CombinerModel
 from mem_util import MemUtil
 
@@ -33,12 +34,15 @@ pyro.set_rng_seed(0)
 torch.set_default_tensor_type(torch.DoubleTensor)
 
 
-class AdjusterModel(object):
+_mem_util = MemUtil(rss_mem=False, python_mem=False)
+
+
+class AdjusterModel(AbstractModel):
     FITTING_WINDOW = 100 # TODO 
     MAX_OPT_STEPS = 3000 # maximum steps of optimization
 
     def __init__(self, configs, combiner_model, gpm_kernel=None):
-        self.configs = configs
+        super().__init__(configs, "Adjuster")
         self.combiner_model = combiner_model # must've been trained already
         if gpm_kernel is None:
             gpm_kernel = gp.kernels.RBF(
@@ -51,15 +55,6 @@ class AdjusterModel(object):
         self.dataloader = {}
         self.last_y = None
 
-    def _get_data(self, flag):
-        if flag not in self.dataset:
-            self.dataset[flag], self.dataloader[flag] = get_data_provider(self.configs, flag)
-        return self.dataset[flag], self.dataloader[flag]
-
-    # NOTE: TBD
-    def _select_criterion(self):
-        criterion = nn.MSELoss()
-        return criterion
 
     def _train_gpmodel(self, y):
         pyro.clear_param_store() # NOTE : Need to do everytime? 
@@ -114,7 +109,7 @@ class AdjusterModel(object):
             y_hat_t, _ = self.combiner_model.proceed_onestep(
                 batch_x, batch_y, batch_x_mark, batch_y_mark, criterion)
             y_hat_cbm[t] = y_hat_t
-            MemUtil.print_memory_usage()
+            _mem_util.print_memory_usage()
 
         # Gaussian Process model is to used to predict next deviation from past predctions
         deviations = y - y_hat_cbm
@@ -159,7 +154,7 @@ class AdjusterModel(object):
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
             y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t] = \
                 self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training=True)            
-            MemUtil.print_memory_usage()
+            _mem_util.print_memory_usage()
 
         if need_to_invert_data:
             n_features = test_set.data_y.shape[1]
@@ -213,4 +208,6 @@ class AdjusterModel(object):
                 label="area in (-2σ, +2σ)"
             )        
         ax.legend()
-        plt.savefig("./result_gaussian_process_plot.pdf", bbox_inches='tight')
+
+        result_path = self._get_result_path()
+        plt.savefig(result_path + "/gaussian_process_plot.pdf", bbox_inches='tight')

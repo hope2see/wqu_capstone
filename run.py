@@ -22,35 +22,13 @@ from torch import optim
 from basemodels import EtsModel, SarimaModel, NeurlNetModel
 from combiner import CombinerModel
 from adjuster import AdjusterModel
+from misc_util import get_config_str
+
 from mem_util import MemUtil
-
-
-def get_setting_str(args):
-    setting_str = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_expand{}_dc{}_fc{}_eb{}_dt{}_{}'.format(
-        args.task_name,
-        args.model_id,
-        args.model,
-        args.data,
-        args.features,
-        args.seq_len,
-        args.label_len,
-        args.pred_len,
-        args.d_model,
-        args.n_heads,
-        args.e_layers,
-        args.d_layers,
-        args.d_ff,
-        args.expand,
-        args.d_conv,
-        args.factor,
-        args.embed,
-        args.distil,
-        args.des)
-    return setting_str
+_mem_util = MemUtil(rss_mem=True, python_mem=True)
 
 
 def parse_cmd_args(args=None):
-    # parser = argparse.ArgumentParser(description='TimesNet')
     parser = argparse.ArgumentParser()
 
     # basic config
@@ -174,6 +152,10 @@ def parse_cmd_args(args=None):
     # TimeXer
     parser.add_argument('--patch_len', type=int, default=16, help='patch length')
 
+    # Combiner
+    parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
+    parser.add_argument('--hpo_interval', type=int, default=1, help="interval (timesteps >= 1) for Adaptive HPO")
+
     args = parser.parse_args(args)
     return args
 
@@ -200,7 +182,7 @@ def set_device_configs(args):
         args.gpu = args.device_ids[0]
 
 
-def plot_forecast_result(truth, adjuster_pred, combiner_pred, base_preds, basemodels, filepath='./result_forecast_result.pdf'):
+def plot_forecast_result(truth, adjuster_pred, combiner_pred, base_preds, basemodels, filepath):
     plt.figure(figsize=(12, 6))
     plt.title('Forecast Comparison')     
     plt.ylabel('Target (BTC return in 25 days)')     
@@ -229,7 +211,7 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     losses_bsm = {}
 
     if filepath is not None:
-        f = open(filepath, 'a')
+        f = open(filepath, 'w')
 
     print("\n--------------------------------")
     print("Losses of all models")
@@ -266,8 +248,8 @@ def run(args=None):
     configs = parse_cmd_args(args)
     set_device_configs(configs)
 
-    MemUtil.start_python_memory_tracking()
-    MemUtil.print_memory_usage()
+    _mem_util.start_python_memory_tracking()
+    _mem_util.print_memory_usage()
 
     print('\nConfigurations =================================')
     print_args(configs)
@@ -278,17 +260,15 @@ def run(args=None):
     torch.manual_seed(fix_seed)
     np.random.seed(fix_seed)
 
-    setting_str = get_setting_str(configs)
-
     # create base models 
     etsModel = EtsModel(configs)
     sarimaModel = SarimaModel(configs)
-    dLinearModel = NeurlNetModel(configs, "DLinear", DLinear, setting_str)
-    iTransformerModel = NeurlNetModel(configs, "iTransformer", iTransformer, setting_str)
-    timeXerModel = NeurlNetModel(configs, "TimeXer", TimeXer, setting_str)
+    dLinearModel = NeurlNetModel(configs, "DLinear", DLinear)
+    iTransformerModel = NeurlNetModel(configs, "iTransformer", iTransformer)
+    timeXerModel = NeurlNetModel(configs, "TimeXer", TimeXer)
     # basemodels = [etsModel, sarimaModel, iTransformerModel]
-    basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
-    # basemodels = [etsModel, sarimaModel]
+    # basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
+    basemodels = [etsModel, sarimaModel]
 
     
     # create combiner model
@@ -309,24 +289,30 @@ def run(args=None):
         for basemodel in basemodels:
             basemodel.load_saved_model()
 
-    MemUtil.print_memory_usage()
+    _mem_util.print_memory_usage()
 
     print('\nTraining combiner model ======================')
     combinerModel.train()
-    MemUtil.print_memory_usage()
+    _mem_util.print_memory_usage()
 
     print('\nTraining adjuster model ======================')
     adjusterModel.train()
-    MemUtil.print_memory_usage()
+    _mem_util.print_memory_usage()
 
     print('\nTesting ==================================')
     y, y_hat, y_hat_cbm, y_hat_bsm = adjusterModel.test()
-    MemUtil.print_memory_usage()
+    _mem_util.print_memory_usage()
 
-    report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, filepath="./result_losses.txt")
+    result_dir = "./result/" + get_config_str(configs)
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
+    report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, 
+                  filepath = result_dir + "/models_losses.txt")
 
     # Plot forecast results of all models
-    plot_forecast_result(y, y_hat, y_hat_cbm, y_hat_bsm, basemodels)
+    plot_forecast_result(y, y_hat, y_hat_cbm, y_hat_bsm, basemodels, 
+                        filepath = result_dir + "/models_forecast_comparison.pdf")
 
     # Plot (and save to file) the result of the last lookback window of test period 
     adjusterModel.plot_gpmodel()
@@ -334,7 +320,7 @@ def run(args=None):
     # clean-up cache 
     cleanup_gpu_cache(configs)
 
-    MemUtil.stop_python_memory_tracking()
+    _mem_util.stop_python_memory_tracking()
 
     print('Bye ~~~~~~')
 

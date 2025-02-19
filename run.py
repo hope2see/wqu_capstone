@@ -267,8 +267,8 @@ def run(args=None):
     iTransformerModel = NeurlNetModel(configs, "iTransformer", iTransformer)
     timeXerModel = NeurlNetModel(configs, "TimeXer", TimeXer)
     # basemodels = [etsModel, sarimaModel, iTransformerModel]
-    # basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
-    basemodels = [etsModel, sarimaModel]
+    basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
+    # basemodels = [etsModel, sarimaModel]
 
     
     # create combiner model

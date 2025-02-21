@@ -17,4 +17,6 @@ PyWavelets
 # Added for TABE
 yfinance
 hyperopt
+statsmodels
+seaborn
 pyro-ppl

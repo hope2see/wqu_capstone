@@ -6,28 +6,11 @@ import torch
 
 
 def get_config_str(configs):
-    setting_str = '{}_{}_{}_{}_ft{}_sl{}_ll{}_pl{}_dm{}_nh{}_el{}_dl{}_df{}_expand{}_dc{}_fc{}_eb{}_dt{}_{}'.format(
-        configs.task_name,
-        configs.model_id,
-        configs.model,
-        configs.data,
-        configs.features,
-        configs.seq_len,
-        configs.label_len,
-        configs.pred_len,
-        configs.d_model,
-        configs.n_heads,
-        configs.e_layers,
-        configs.d_layers,
-        configs.d_ff,
-        configs.expand,
-        configs.d_conv,
-        configs.factor,
-        configs.embed,
-        configs.distil,
-        configs.des)
+    setting_str = f"{configs.model_id}_{configs.model_id}_{configs.data}_sl{configs.seq_len}"
+    setting_str += f"_ahpo_{configs.hpo_interval}" if configs.adaptive_hpo else "_ahpo_no"
+    setting_str = f"_ep{configs.train_epochs}_"
+    setting_str += configs.des
     return setting_str
-
 
 
 class EarlyStopping:
@@ -37,7 +20,8 @@ class EarlyStopping:
         self.counter = 0
         self.best_score = None
         self.early_stop = False
-        self.val_loss_min = np.Inf
+        # np.Inf` was removed in the NumPy 2.0 release. Use `np.inf` instead.
+        self.val_loss_min = np.inf # np.Inf
         self.delta = delta
 
     def __call__(self, val_loss, model, path):

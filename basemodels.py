@@ -49,7 +49,7 @@ class StatisticalModel(AbstractModel):
         pred = self._fit(endog).forecast(steps=1)
         truth = batch_y[0, -1, -1] 
         loss = criterion(torch.tensor(pred), truth).item()
-        return loss, pred[0]
+        return pred[0], loss
     
 
 class EtsModel(StatisticalModel):
@@ -71,7 +71,7 @@ class SarimaModel(StatisticalModel):
     
 
 # Written by referencing Time-Series-Library/exp_longterm_forecasting.py,exp_basic.py
-class NeurlNetModel(AbstractModel):
+class TSLibModel(AbstractModel):
     def __init__(self, configs, name, model):
         super().__init__(configs, name)
         self.device = self._acquire_device()
@@ -148,7 +148,7 @@ class NeurlNetModel(AbstractModel):
         if training: 
             self._train_batch_with_validation(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion)
 
-        return loss, pred
+        return pred, loss
 
 
     # NOTE 

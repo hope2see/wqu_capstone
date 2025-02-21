@@ -1,4 +1,3 @@
-
 # ".env" file is used instead of the sys.path.append() method
 # import sys
 # Add Time-Series-Library directory to module lookup paths
@@ -6,29 +5,41 @@
 
 import os 
 import argparse
-from utils.print_args import print_args
-from models import TimesNet, DLinear, PatchTST, iTransformer, TimeXer, TSMixer
-# from utils.losses import mape_loss, mase_loss, smape_loss
-from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
-
 import matplotlib.pyplot as plt
-
 import numpy as np
 import random
 import torch
 import torch.nn as nn
 from torch import optim
 
-from basemodels import EtsModel, SarimaModel, NeurlNetModel
+# Time-Series-Library
+from utils.print_args import print_args
+from models import TimesNet, DLinear, PatchTST, iTransformer, TimeXer, TSMixer
+from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
+
+# TABE 
+from abstractmodel import AbstractModel
+from basemodels import EtsModel, SarimaModel, TSLibModel
+from timemoe import TimeMoE
 from combiner import CombinerModel
 from adjuster import AdjusterModel
 from misc_util import get_config_str
-
 from mem_util import MemUtil
+
 _mem_util = MemUtil(rss_mem=True, python_mem=True)
 
 
-def parse_cmd_args(args=None):
+def _set_seed(fix_seed = 2025):
+    random.seed(fix_seed)
+    torch.manual_seed(fix_seed)
+    np.random.seed(fix_seed)
+
+
+def _comma_separated_list(arg_value):
+    return [v.strip() for v in arg_value.split(',')]
+
+
+def _parse_cmd_args(args=None):
     parser = argparse.ArgumentParser()
 
     # basic config
@@ -153,6 +164,8 @@ def parse_cmd_args(args=None):
     parser.add_argument('--patch_len', type=int, default=16, help='patch length')
 
     # Combiner
+    parser.add_argument('--basemodels', type=_comma_separated_list, default=[], 
+                        help="Comma-separated names of base models to be inlcuded in the combiner model")
     parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
     parser.add_argument('--hpo_interval', type=int, default=1, help="interval (timesteps >= 1) for Adaptive HPO")
 
@@ -160,7 +173,7 @@ def parse_cmd_args(args=None):
     return args
 
 
-def set_device_configs(args):
+def _set_device_configs(args):
     if torch.cuda.is_available() and args.use_gpu:
         args.device = torch.device('cuda:{}'.format(args.gpu))
         args.gpu_type = 'cuda' # by default
@@ -182,6 +195,30 @@ def set_device_configs(args):
         args.gpu = args.device_ids[0]
 
 
+def _create_base_model(configs, model_name) -> AbstractModel:
+    tslib_models = { # models in Time-Series-Library
+        # 'TimesNet': TimesNet,
+        'DLinear': DLinear,
+        'PatchTST': PatchTST,
+        'iTransformer': iTransformer,
+        'TimeXer': TimeXer,
+        # 'TSMixer': TSMixer
+    }
+    other_models = {
+        'EtsModel': EtsModel,
+        'SarimaModel': SarimaModel,
+        'TimeMoE': TimeMoE,
+    }
+
+    if model_name in tslib_models:
+        model = TSLibModel(configs, model_name, tslib_models[model_name])
+    elif model_name in other_models:
+        model = other_models[model_name](configs)
+    else:
+        raise ValueError(f"Model {model_name} is not supported.")
+    return model
+
+
 def plot_forecast_result(truth, adjuster_pred, combiner_pred, base_preds, basemodels, filepath):
     plt.figure(figsize=(12, 6))
     plt.title('Forecast Comparison')     
@@ -196,16 +233,15 @@ def plot_forecast_result(truth, adjuster_pred, combiner_pred, base_preds, basemo
     plt.savefig(filepath, bbox_inches='tight')
 
 
-metric_dict = {
-    "MAE": MAE, 
-    "MSE": MSE, 
-    "RMSE": RMSE, 
-    "MAPE": MAPE, 
-    "MSPE": MSPE
-}
+def _report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
+    metric_dict = {
+        "MAE": MAE, 
+        "MSE": MSE, 
+        "RMSE": RMSE, 
+        "MAPE": MAPE, 
+        "MSPE": MSPE
+    }
 
-
-def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     losses_adj = {}
     losses_cbm = {}
     losses_bsm = {}
@@ -235,7 +271,7 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     return losses_adj, losses_cbm, losses_bsm
 
 
-def cleanup_gpu_cache(args):
+def _cleanup_gpu_cache(args):
     if args.gpu_type == 'mps':
         # Only if mps.empty_cache() is available, then call it
         if hasattr(torch.backends.mps, 'empty_cache'):
@@ -245,39 +281,22 @@ def cleanup_gpu_cache(args):
 
 
 def run(args=None):
-    configs = parse_cmd_args(args)
-    set_device_configs(configs)
+    _set_seed()
 
     _mem_util.start_python_memory_tracking()
     _mem_util.print_memory_usage()
 
-    print('\nConfigurations =================================')
+    configs = _parse_cmd_args(args)
+    _set_device_configs(configs)
     print_args(configs)
 
-    # fix seed of random funcs
-    fix_seed = 2025
-    random.seed(fix_seed)
-    torch.manual_seed(fix_seed)
-    np.random.seed(fix_seed)
-
-    # create base models 
-    etsModel = EtsModel(configs)
-    sarimaModel = SarimaModel(configs)
-    dLinearModel = NeurlNetModel(configs, "DLinear", DLinear)
-    iTransformerModel = NeurlNetModel(configs, "iTransformer", iTransformer)
-    timeXerModel = NeurlNetModel(configs, "TimeXer", TimeXer)
-    # basemodels = [etsModel, sarimaModel, iTransformerModel]
-    basemodels = [etsModel, sarimaModel, dLinearModel, iTransformerModel, timeXerModel]
-    # basemodels = [etsModel, sarimaModel]
-
+    basemodels = []
+    for model_name in configs.basemodels:
+        basemodels.append(_create_base_model(configs, model_name))
     
-    # create combiner model
     combinerModel = CombinerModel(configs, basemodels)
-
-    # create adjuster model 
     adjusterModel = AdjusterModel(configs, combinerModel)
 
-    # train base models 
     if configs.is_training:
         print('\nTraining base models ==================================')
         for basemodel in basemodels:
@@ -307,18 +326,15 @@ def run(args=None):
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
 
-    report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, 
+    _report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, 
                   filepath = result_dir + "/models_losses.txt")
 
-    # Plot forecast results of all models
     plot_forecast_result(y, y_hat, y_hat_cbm, y_hat_bsm, basemodels, 
                         filepath = result_dir + "/models_forecast_comparison.pdf")
 
-    # Plot (and save to file) the result of the last lookback window of test period 
     adjusterModel.plot_gpmodel()
 
-    # clean-up cache 
-    cleanup_gpu_cache(configs)
+    _cleanup_gpu_cache(configs)
 
     _mem_util.stop_python_memory_tracking()
 

@@ -1,6 +1,5 @@
 
 # Gaussian Process Model 
-
 # ref) https://pyro.ai/examples/gp.html
 
 import os

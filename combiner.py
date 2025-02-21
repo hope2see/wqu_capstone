@@ -14,7 +14,7 @@ from models import TimesNet, DLinear, PatchTST, iTransformer, TimeMixer, TSMixer
 from dataset_loader import get_data_provider
 
 from abstractmodel import AbstractModel
-from basemodels import NeurlNetModel, StatisticalModel
+from basemodels import TSLibModel, StatisticalModel
 
 
 # warnings.filterwarnings('ignore')
@@ -312,7 +312,7 @@ class CombinerModel(AbstractModel):
         basemodel_losses = np.empty((len(self.basemodels), 1))
 
         for m, basemodel in enumerate(self.basemodels):
-            basemodel_losses[m, 0], basemodel_preds[m] = basemodel.proceed_onestep(
+            basemodel_preds[m], basemodel_losses[m, 0] = basemodel.proceed_onestep(
                 batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training) 
 
         basemodel_losses = np.concatenate((self.basemodel_losses, basemodel_losses), axis=1)

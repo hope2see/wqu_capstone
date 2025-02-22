@@ -1,46 +1,18 @@
 import os
 import torch
-import torch.distributed as dist
-from torch.utils.data import DistributedSampler, DataLoader
-from tqdm import tqdm
-
-from abstractmodel import AbstractModel
-from mem_util import MemUtil
-
 from transformers import AutoModelForCausalLM
+from tabe.abstractmodel import AbstractModel
 
+from mem_util import MemUtil
 _mem_util = MemUtil(rss_mem=False, python_mem=False)
-
-def setup_nccl(rank, world_size, master_addr='127.0.0.1', master_port=9899):
-    dist.init_process_group("nccl", init_method='tcp://{}:{}'.format(master_addr, master_port), rank=rank,
-                            world_size=world_size)
 
 
 class TimeMoE(AbstractModel):
     def __init__(self, configs):
         super().__init__(configs, "TimeMoE")
 
-        # from run_eval.py of Time-MoE ------ 
         model_path = 'Maple728/TimeMoE-50M'        
-        # master_addr = os.getenv('MASTER_ADDR', '127.0.0.1')
-        # master_port = os.getenv('MASTER_PORT', 9899)
-        # world_size = int(os.getenv('WORLD_SIZE') or 1)
-        # rank = int(os.getenv('RANK') or 0)
-        # local_rank = int(os.getenv('LOCAL_RANK') or 0)
-        # if torch.cuda.is_available():
-        #     try:
-        #         setup_nccl(rank=rank, world_size=world_size, master_addr=master_addr, master_port=master_port)
-        #         device = f"cuda:{local_rank}"
-        #         is_dist = True
-        #     except Exception as e:
-        #         print('Error: ', f'Setup nccl fail, so set device to cpu: {e}')
-        #         device = 'cpu'
-        #         is_dist = False
-        # else:
-        #     device = 'cpu'
-        #     is_dist = False
             
-        # from NeuralNetModel 
         device = self._acquire_device()
 
         try:
@@ -68,7 +40,6 @@ class TimeMoE(AbstractModel):
         self.model.eval()
 
 
-    # from NeuralNetModel 
     def _acquire_device(self):
         if self.configs.use_gpu and self.configs.gpu_type == 'cuda':
             os.environ["CUDA_VISIBLE_DEVICES"] = str(
@@ -103,11 +74,10 @@ class TimeMoE(AbstractModel):
         assert batch_x.shape[0]==1 and batch_y.shape[0]==1
 
         # Given: batch_x.shape = (batch_len=1, seq_len, feature_dim)
-        # TimeMoE expects --
-        # 'inputs': np.array(window_seq[: self.context_length], dtype=np.float32),
-        # 'labels': np.array(window_seq[-self.prediction_length:], dtype=np.float32),
-
-        # reshape batch_x to (feature_dim, seq_len)
+        # TimeMoE expect:
+        #   'inputs': np.array(window_seq[: self.context_length], dtype=np.float32),
+        #   'labels': np.array(window_seq[-self.prediction_length:], dtype=np.float32),
+        # So, reshape batch_x to (feature_dim, seq_len)
         batch_x = batch_x[0].T
         
         outputs = self.model.generate(

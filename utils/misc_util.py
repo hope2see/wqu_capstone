@@ -8,7 +8,7 @@ import torch
 def get_config_str(configs):
     setting_str = f"{configs.model_id}_{configs.model_id}_{configs.data}_sl{configs.seq_len}"
     setting_str += f"_ahpo_{configs.hpo_interval}" if configs.adaptive_hpo else "_ahpo_no"
-    setting_str = f"_ep{configs.train_epochs}_"
+    setting_str += f"_ep{configs.train_epochs}_"
     setting_str += configs.des
     return setting_str
 

@@ -13,7 +13,7 @@ from utils.dtw_metric import dtw, accelerated_dtw
 from utils.tools import adjust_learning_rate, visual
 from utils.metrics import metric
 
-from misc_util import EarlyStopping
+from utils.misc_util import EarlyStopping
 from dataset_loader import get_data_provider
 
 from abstractmodel import AbstractModel
@@ -109,9 +109,16 @@ class TSLibModel(AbstractModel):
 
     def _forward_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion):
         batch_x = batch_x.float().to(self.device)
+        n_batch, n_vars = batch_y.shape[0], batch_y.shape[2] 
         batch_y = batch_y.float().to(self.device)
         batch_x_mark = batch_x_mark.float().to(self.device)
         batch_y_mark = batch_y_mark.float().to(self.device)
+
+        if self.args.channel_mixup:
+            perm = torch.randperm(n_vars, device=self.device)
+            mix_up = torch.normal(mean=0, std=self.args.sigma, size=(n_batch, n_vars), device=self.device).unsqueeze(-2)
+            batch_x = batch_x + batch_x[:, :, perm] * mix_up
+            batch_y = batch_y + batch_y[:, :, perm] * mix_up
 
         # decoder input
         dec_inp = torch.zeros_like(batch_y[:, -self.configs.pred_len:, :]).float()

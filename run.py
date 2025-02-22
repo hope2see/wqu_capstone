@@ -18,13 +18,13 @@ from models import TimesNet, DLinear, PatchTST, iTransformer, TimeXer, TSMixer
 from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
 
 # TABE 
-from abstractmodel import AbstractModel
-from basemodels import EtsModel, SarimaModel, TSLibModel
-from timemoe import TimeMoE
-from combiner import CombinerModel
-from adjuster import AdjusterModel
-from misc_util import get_config_str
-from mem_util import MemUtil
+from tabe.abstractmodel import AbstractModel
+from tabe.basemodels import EtsModel, SarimaModel, TSLibModel
+from tabe.timemoe import TimeMoE
+from tabe.combiner import CombinerModel
+from tabe.adjuster import AdjusterModel
+from utils.misc_util import get_config_str
+from utils.mem_util import MemUtil
 
 _mem_util = MemUtil(rss_mem=True, python_mem=True)
 
@@ -163,6 +163,26 @@ def _parse_cmd_args(args=None):
     # TimeXer
     parser.add_argument('--patch_len', type=int, default=16, help='patch length')
 
+    # CMamba
+    parser.add_argument('--dt_rank', type=int, default=32)
+    parser.add_argument('--patch_num', type=int, default=32)
+    parser.add_argument('--d_state', type=int, default=16)
+    parser.add_argument('--d_conv', type=int, default=4)
+    parser.add_argument('--dt_min', type=float, default=0.001)
+    parser.add_argument('--dt_init', type=str, default='random', help='random or constant')
+    parser.add_argument('--dt_max', type=float, default=0.1)
+    parser.add_argument('--dt_scale', type=float, default=1.0)
+    parser.add_argument('--dt_init_floor', type=float, default=1e-4)
+    parser.add_argument('--bias', type=bool, default=True)
+    parser.add_argument('--conv_bias', type=bool, default=True)
+    parser.add_argument('--pscan', action='store_true', help='use parallel scan mode or sequential mode when training', default=False)
+    parser.add_argument('--avg', action='store_true', help='avg pooling', default=False)
+    parser.add_argument('--max', action='store_true', help='max pooling', default=False)
+    parser.add_argument('--reduction', type=int, default=2)
+    parser.add_argument('--gddmlp', action='store_true', help='global data-dependent mlp', default=False)
+    parser.add_argument('--channel_mixup', action='store_true', help='channel mixup', default=False)
+    parser.add_argument('--sigma', type=float, default=1.0)
+
     # Combiner
     parser.add_argument('--basemodels', type=_comma_separated_list, default=[], 
                         help="Comma-separated names of base models to be inlcuded in the combiner model")
@@ -260,7 +280,7 @@ def _report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
         for i in range(len(y_hat_bsm)):
             losses_bsm[m].append(metric_dict[m](y_hat_bsm[i], y))
         output_str = f"{m:<4}: {losses_adj[m]:.6f}, {losses_cbm[m]:.6f}, " \
-                    +  ", ".join([f"{loss:.4f}" for loss in losses_bsm[m]])
+                    +  ", ".join([f"{loss:.6f}" for loss in losses_bsm[m]])
         print(output_str)
         if filepath is not None:
             f.write(output_str + '\n')

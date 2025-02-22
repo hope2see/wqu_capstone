@@ -19,12 +19,13 @@ from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
 
 # TABE 
 from tabe.models.abstractmodel import AbstractModel
-from tabe.models.basemodels import EtsModel, SarimaModel, TSLibModel
+from tabe.models.basemodels import StatisticalModel, EtsModel, SarimaModel, TSLibModel
 from tabe.models.timemoe import TimeMoE
 from tabe.models.combiner import CombinerModel
 from tabe.models.adjuster import AdjusterModel
 from tabe.utils.misc_util import get_config_str
 from tabe.utils.mem_util import MemUtil
+from cmamba.models import CMamba
 
 _mem_util = MemUtil(rss_mem=True, python_mem=True)
 
@@ -92,6 +93,7 @@ def _parse_cmd_args(args=None):
     parser.add_argument('--distil', action='store_false',
                         help='whether to use distilling in encoder, using this argument means not using distilling',
                         default=True)
+    parser.add_argument('--head_dropout', type=float, default=0.0, help='head dropout')
     parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
     parser.add_argument('--embed', type=str, default='timeF',
                         help='time features encoding, options:[timeF, fixed, learned]')
@@ -193,29 +195,44 @@ def _parse_cmd_args(args=None):
     return args
 
 
-def _set_device_configs(args):
-    if torch.cuda.is_available() and args.use_gpu:
-        args.device = torch.device('cuda:{}'.format(args.gpu))
-        args.gpu_type = 'cuda' # by default
+def _set_device_configs(configs):
+    if configs.use_gpu and torch.cuda.is_available():
+        configs.device = torch.device('cuda:{}'.format(configs.gpu))
+        configs.gpu_type = 'cuda' # by default
         print('Using GPU')
+    # MPS is not fully supported. It causes error in CMamba (and probably in TimeMoE)
+    # elif configs.use_gpu and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
+    #     configs.device = torch.device("mps")
+    #     configs.gpu_type = 'mps' # If not set, it causes an error in Exp_Basic._acquire_device()
+    #     print('Using mps')
     else:
-        if hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
-            # args.device = torch.device("mps") if torch.backends.mps.is_available() else torch.device("cpu")
-            args.device = torch.device("mps")
-            args.gpu_type = 'mps' # If not set, it causes an error in Exp_Basic._acquire_device()
-            print('Using mps')
-        else:
-            args.device = torch.device("cpu")
-            print('Using cpu')
+        configs.use_gpu = False
+        configs.device = torch.device("cpu")
+        print('Using cpu')
 
-    if args.use_gpu and args.use_multi_gpu:
-        args.devices = args.devices.replace(' ', '')
-        device_ids = args.devices.split(',')
-        args.device_ids = [int(id_) for id_ in device_ids]
-        args.gpu = args.device_ids[0]
+    if configs.use_gpu and configs.use_multi_gpu:
+        configs.devices = configs.devices.replace(' ', '')
+        device_ids = configs.devices.split(',')
+        configs.device_ids = [int(id_) for id_ in device_ids]
+        configs.gpu = configs.device_ids[0]
 
 
-def _create_base_model(configs, model_name) -> AbstractModel:
+def _acquire_device(configs):
+    if configs.use_gpu and configs.gpu_type == 'cuda':
+        os.environ["CUDA_VISIBLE_DEVICES"] = \
+            str(configs.gpu) if not configs.use_multi_gpu else configs.devices
+        device = torch.device('cuda:{}'.format(configs.gpu))
+        print('Use GPU: cuda:{}'.format(configs.gpu))
+    elif configs.use_gpu and configs.gpu_type == 'mps':
+        device = torch.device('mps')
+        print('Use GPU: mps')
+    else:
+        device = torch.device('cpu')
+        print('Use CPU')
+    return device
+
+
+def _create_base_model(configs, device, model_name) -> AbstractModel:
     tslib_models = { # models in Time-Series-Library
         # 'TimesNet': TimesNet,
         'DLinear': DLinear,
@@ -223,6 +240,10 @@ def _create_base_model(configs, model_name) -> AbstractModel:
         'iTransformer': iTransformer,
         'TimeXer': TimeXer,
         # 'TSMixer': TSMixer
+
+        # CMamba is not in TSLib, but follows the TSLib framework
+        # So, we can treat it as a TSLib model
+        'CMamba': CMamba  
     }
     other_models = {
         'EtsModel': EtsModel,
@@ -231,9 +252,13 @@ def _create_base_model(configs, model_name) -> AbstractModel:
     }
 
     if model_name in tslib_models:
-        model = TSLibModel(configs, model_name, tslib_models[model_name])
+        model = TSLibModel(configs, device, model_name, tslib_models[model_name])
     elif model_name in other_models:
-        model = other_models[model_name](configs)
+        model = other_models[model_name]
+        if issubclass(model, StatisticalModel):
+            model = model(configs)
+        else:
+            model = model(configs, device)
     else:
         raise ValueError(f"Model {model_name} is not supported.")
     return model
@@ -291,12 +316,12 @@ def _report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     return losses_adj, losses_cbm, losses_bsm
 
 
-def _cleanup_gpu_cache(args):
-    if args.gpu_type == 'mps':
+def _cleanup_gpu_cache(configs):
+    if configs.gpu_type == 'mps':
         # Only if mps.empty_cache() is available, then call it
         if hasattr(torch.backends.mps, 'empty_cache'):
             torch.backends.mps.empty_cache()
-    elif args.gpu_type == 'cuda':
+    elif configs.gpu_type == 'cuda':
         torch.cuda.empty_cache()
 
 
@@ -310,9 +335,11 @@ def run(args=None):
     _set_device_configs(configs)
     print_args(configs)
 
+    device = _acquire_device(configs)
+
     basemodels = []
     for model_name in configs.basemodels:
-        basemodels.append(_create_base_model(configs, model_name))
+        basemodels.append(_create_base_model(configs, device, model_name))
     
     combinerModel = CombinerModel(configs, basemodels)
     adjusterModel = AdjusterModel(configs, combinerModel)

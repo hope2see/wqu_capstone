@@ -8,13 +8,12 @@ _mem_util = MemUtil(rss_mem=False, python_mem=False)
 
 
 class TimeMoE(AbstractModel):
-    def __init__(self, configs):
+    def __init__(self, configs, device):
         super().__init__(configs, "TimeMoE")
+        self.device = device
 
         model_path = 'Maple728/TimeMoE-50M'        
             
-        device = self._acquire_device()
-
         try:
             from time_moe.models.modeling_time_moe import TimeMoeForPrediction
             model = TimeMoeForPrediction.from_pretrained(
@@ -36,28 +35,7 @@ class TimeMoE(AbstractModel):
 
         self.model = model
         self.device = device
-        # self.prediction_length = configs.pred_len
         self.model.eval()
-
-
-    def _acquire_device(self):
-        if self.configs.use_gpu and self.configs.gpu_type == 'cuda':
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(
-                self.configs.gpu) if not self.configs.use_multi_gpu else self.configs.devices
-            device = torch.device('cuda:{}'.format(self.configs.gpu))
-            print('Use GPU: cuda:{}'.format(self.configs.gpu))
-        # NOTE 
-        # It seems we can't use 'mps' for TimeMoE model, 
-        # because TimeMoE model use float64 dtype and mps doesn't support float64.
-        #  "TypeError: Cannot convert a MPS Tensor to float64 dtype as the MPS framework doesn't support float64. Please use float32 instead."
-        #
-        # elif self.configs.use_gpu and self.configs.gpu_type == 'mps':
-        #     device = torch.device('mps')
-        #     print('Use GPU: mps')
-        else:
-            device = torch.device('cpu')
-            print('Use CPU')
-        return device
 
 
     # NOTE

@@ -72,31 +72,17 @@ class SarimaModel(StatisticalModel):
 
 # Written by referencing Time-Series-Library/exp_longterm_forecasting.py,exp_basic.py
 class TSLibModel(AbstractModel):
-    def __init__(self, configs, name, model):
+    def __init__(self, configs, device, name, model):
         super().__init__(configs, name)
-        self.device = self._acquire_device()
+        self.device = device
         self.model = self._build_model(model).to(self.device)
         self.early_stopping = None
 
     def _build_model(self, model):
         model = model.Model(self.configs).float()
-        if self.configs.use_multi_gpu and self.configs.use_gpu: # CHECK
+        if self.configs.use_multi_gpu and self.configs.use_gpu: 
             model = nn.DataParallel(model, device_ids=self.configs.device_ids)
         return model
-
-    def _acquire_device(self):
-        if self.configs.use_gpu and self.configs.gpu_type == 'cuda':
-            os.environ["CUDA_VISIBLE_DEVICES"] = str(
-                self.configs.gpu) if not self.configs.use_multi_gpu else self.configs.devices
-            device = torch.device('cuda:{}'.format(self.configs.gpu))
-            print('Use GPU: cuda:{}'.format(self.configs.gpu))
-        elif self.configs.use_gpu and self.configs.gpu_type == 'mps':
-            device = torch.device('mps')
-            print('Use GPU: mps')
-        else:
-            device = torch.device('cpu')
-            print('Use CPU')
-        return device
 
     def _select_optimizer(self):
         model_optim = optim.Adam(self.model.parameters(), lr=self.configs.learning_rate)
@@ -115,8 +101,10 @@ class TSLibModel(AbstractModel):
         batch_y_mark = batch_y_mark.float().to(self.device)
 
         if self.configs.channel_mixup:
-            perm = torch.randperm(n_vars, device=self.device)
-            mix_up = torch.normal(mean=0, std=self.configs.sigma, size=(n_batch, n_vars), device=self.device).unsqueeze(-2)
+            perm = torch.randperm(n_vars, device=self.device, dtype=torch.int32)
+            # NOTE: 'mps' device raises an error when using 'torch.normal' function.
+            mix_up = torch.normal(mean=0, std=self.configs.sigma, size=(n_batch, n_vars), 
+                                  device=self.device, dtype=torch.float32).unsqueeze(-2)
             batch_x = batch_x + batch_x[:, :, perm] * mix_up
             batch_y = batch_y + batch_y[:, :, perm] * mix_up
 

@@ -11,10 +11,8 @@ from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
 from models import TimesNet, DLinear, PatchTST, iTransformer, TimeMixer, TSMixer
 
-from dataset_loader import get_data_provider
-
-from abstractmodel import AbstractModel
-from basemodels import TSLibModel, StatisticalModel
+from tabe.data_provider.dataset_loader import get_data_provider
+from tabe.models.abstractmodel import AbstractModel
 
 
 # warnings.filterwarnings('ignore')
@@ -34,7 +32,7 @@ import matplotlib.pyplot as plt
 import warnings
 warnings.filterwarnings('ignore')
 
-from mem_util import MemUtil
+from tabe.utils.mem_util import MemUtil
 _mem_util = MemUtil(rss_mem=False, python_mem=False)
 
 

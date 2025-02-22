@@ -13,13 +13,13 @@ from utils.dtw_metric import dtw, accelerated_dtw
 from utils.tools import adjust_learning_rate, visual
 from utils.metrics import metric
 
-from utils.misc_util import EarlyStopping
-from dataset_loader import get_data_provider
-
-from abstractmodel import AbstractModel
-
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
+
+from tabe.utils.misc_util import EarlyStopping
+from tabe.data_provider.dataset_loader import get_data_provider
+from tabe.models.abstractmodel import AbstractModel
+
 
 warnings.filterwarnings('ignore')
 
@@ -114,9 +114,9 @@ class TSLibModel(AbstractModel):
         batch_x_mark = batch_x_mark.float().to(self.device)
         batch_y_mark = batch_y_mark.float().to(self.device)
 
-        if self.args.channel_mixup:
+        if self.configs.channel_mixup:
             perm = torch.randperm(n_vars, device=self.device)
-            mix_up = torch.normal(mean=0, std=self.args.sigma, size=(n_batch, n_vars), device=self.device).unsqueeze(-2)
+            mix_up = torch.normal(mean=0, std=self.configs.sigma, size=(n_batch, n_vars), device=self.device).unsqueeze(-2)
             batch_x = batch_x + batch_x[:, :, perm] * mix_up
             batch_y = batch_y + batch_y[:, :, perm] * mix_up
 

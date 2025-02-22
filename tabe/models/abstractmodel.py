@@ -1,7 +1,7 @@
 
 import os
 import torch.nn as nn
-from misc_util import get_config_str
+from tabe.utils.misc_util import get_config_str
 
 class AbstractModel(object):
     def __init__(self, configs, name):

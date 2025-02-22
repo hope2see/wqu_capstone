@@ -21,10 +21,10 @@ from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-from dataset_loader import get_data_provider
-from abstractmodel import AbstractModel
-from combiner import CombinerModel
-from mem_util import MemUtil
+from tabe.data_provider.dataset_loader import get_data_provider
+from tabe.models.abstractmodel import AbstractModel
+from tabe.models.combiner import CombinerModel
+from tabe.utils.mem_util import MemUtil
 
 
 smoke_test = "CI" in os.environ  # ignore; used to check code integrity in the Pyro repo

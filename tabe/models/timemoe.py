@@ -1,9 +1,9 @@
 import os
 import torch
 from transformers import AutoModelForCausalLM
-from tabe.abstractmodel import AbstractModel
+from tabe.models.abstractmodel import AbstractModel
 
-from mem_util import MemUtil
+from tabe.utils.mem_util import MemUtil
 _mem_util = MemUtil(rss_mem=False, python_mem=False)
 
 

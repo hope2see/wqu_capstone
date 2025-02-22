@@ -18,13 +18,13 @@ from models import TimesNet, DLinear, PatchTST, iTransformer, TimeXer, TSMixer
 from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
 
 # TABE 
-from tabe.abstractmodel import AbstractModel
-from tabe.basemodels import EtsModel, SarimaModel, TSLibModel
-from tabe.timemoe import TimeMoE
-from tabe.combiner import CombinerModel
-from tabe.adjuster import AdjusterModel
-from utils.misc_util import get_config_str
-from utils.mem_util import MemUtil
+from tabe.models.abstractmodel import AbstractModel
+from tabe.models.basemodels import EtsModel, SarimaModel, TSLibModel
+from tabe.models.timemoe import TimeMoE
+from tabe.models.combiner import CombinerModel
+from tabe.models.adjuster import AdjusterModel
+from tabe.utils.misc_util import get_config_str
+from tabe.utils.mem_util import MemUtil
 
 _mem_util = MemUtil(rss_mem=True, python_mem=True)
 
@@ -167,7 +167,7 @@ def _parse_cmd_args(args=None):
     parser.add_argument('--dt_rank', type=int, default=32)
     parser.add_argument('--patch_num', type=int, default=32)
     parser.add_argument('--d_state', type=int, default=16)
-    parser.add_argument('--d_conv', type=int, default=4)
+    # parser.add_argument('--d_conv', type=int, default=4)
     parser.add_argument('--dt_min', type=float, default=0.001)
     parser.add_argument('--dt_init', type=str, default='random', help='random or constant')
     parser.add_argument('--dt_max', type=float, default=0.1)

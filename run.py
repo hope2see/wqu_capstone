@@ -5,6 +5,7 @@
 
 import os 
 import argparse
+import copy
 import matplotlib.pyplot as plt
 import numpy as np
 import random
@@ -36,27 +37,106 @@ def _set_seed(fix_seed = 2025):
     np.random.seed(fix_seed)
 
 
-def _comma_separated_list(arg_value):
-    return [v.strip() for v in arg_value.split(',')]
+def _add_model_arguments(parser, model_name=None):
+    if model_name is None: # common model arguments
+        parser.add_argument('--top_k', type=int, default=5, help='for TimesBlock')
+        parser.add_argument('--num_kernels', type=int, default=6, help='for Inception')
+        parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
+        parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
+        parser.add_argument('--c_out', type=int, default=7, help='output size')
+        parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
+        parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
+        parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
+        parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
+        parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
+        parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
+        parser.add_argument('--factor', type=int, default=1, help='attn factor')
+        parser.add_argument('--distil', action='store_false',
+                            help='whether to use distilling in encoder, using this argument means not using distilling',
+                            default=True)
+        parser.add_argument('--head_dropout', type=float, default=0.0, help='head dropout')
+        parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
+        parser.add_argument('--embed', type=str, default='timeF',
+                            help='time features encoding, options:[timeF, fixed, learned]')
+        parser.add_argument('--activation', type=str, default='gelu', help='activation')
+        parser.add_argument('--channel_independence', type=int, default=1,
+                            help='0: channel dependence 1: channel independence for FreTS model')
+        parser.add_argument('--decomp_method', type=str, default='moving_avg',
+                            help='method of series decompsition, only support moving_avg or dft_decomp')
+        parser.add_argument('--use_norm', type=int, default=1, help='whether to use normalize; True 1 False 0')
+        parser.add_argument('--down_sampling_layers', type=int, default=0, help='num of down sampling layers')
+        parser.add_argument('--down_sampling_window', type=int, default=1, help='down sampling window size')
+        parser.add_argument('--down_sampling_method', type=str, default=None,
+                            help='down sampling method, only support avg, max, conv')
+        parser.add_argument('--seg_len', type=int, default=48,
+                            help='the length of segmen-wise iteration of SegRNN')
+    elif model_name == 'TimeXer':
+        parser.add_argument('--patch_len', type=int, default=16, help='patch length')
+    elif model_name == 'CMamba':
+        parser.add_argument('--dt_rank', type=int, default=32)
+        parser.add_argument('--patch_num', type=int, default=32)
+        parser.add_argument('--d_state', type=int, default=16) 
+        parser.add_argument('--d_conv', type=int, default=4, help='conv kernel size for Mamba')
+        parser.add_argument('--dt_min', type=float, default=0.001)
+        parser.add_argument('--dt_init', type=str, default='random', help='random or constant')
+        parser.add_argument('--dt_max', type=float, default=0.1)
+        parser.add_argument('--dt_scale', type=float, default=1.0)
+        parser.add_argument('--dt_init_floor', type=float, default=1e-4)
+        parser.add_argument('--bias', type=bool, default=True)
+        parser.add_argument('--conv_bias', type=bool, default=True)
+        parser.add_argument('--pscan', action='store_true', help='use parallel scan mode or sequential mode when training', default=False)
+        parser.add_argument('--avg', action='store_true', help='avg pooling', default=False)
+        parser.add_argument('--max', action='store_true', help='max pooling', default=False)
+        parser.add_argument('--reduction', type=int, default=2)
+        parser.add_argument('--gddmlp', action='store_true', help='global data-dependent mlp', default=False)
+        parser.add_argument('--channel_mixup', action='store_true', help='channel mixup', default=False)
+        parser.add_argument('--sigma', type=float, default=1.0)
+    elif model_name == 'DLiner':
+        pass
+    elif model_name == 'PatchTST':
+        pass
+    elif model_name == 'iTransformer':
+        pass
+    elif model_name == 'TimeMoE':
+        pass
+    else:
+        raise ValueError(f"Model {model_name} is not supported as a base model")
+
+
+def _model_specific_args(arg_value):
+    _m_parser = argparse.ArgumentParser()
+    argv_list = [v.strip() for v in arg_value.split()]
+    model_name = argv_list[0]
+    model_args = None
+
+    if len(argv_list) > 1:
+        model_args = argv_list[1:] if len(argv_list) > 1 else []
+        # common model arugments, which are allowed to be overrided by the model arguments
+        _add_model_arguments(_m_parser)
+        # model-specific arguments
+        _add_model_arguments(_m_parser, model_name)
+        model_args = _m_parser.parse_args(model_args)
+
+    return (model_name, model_args)
 
 
 def _parse_cmd_args(args=None):
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(description='TABE')
 
     # basic config
     parser.add_argument('--task_name', type=str, required=True, default='long_term_forecast',
                         help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
     parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
     parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
-    parser.add_argument('--model', type=str, required=True, default='Autoformer',
-                        help='model name, options: [Autoformer, Transformer, TimesNet]')
+    parser.add_argument('--model', type=str, required=True, default='TABE',
+                        help='model name, options: [DLinear, PatchTST, iTransformer, TimeXer, CMamba, TimeMoE, TABE]')
 
     # data loader
     parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
     parser.add_argument('--root_path', type=str, default='./data/ETT/', help='root path of the data file')
     parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
     parser.add_argument('--features', type=str, default='M',
-                        help='forecasting task, options:[M, S, MS]; M:multivariate predict multivariate, S:univariate predict univariate, MS:multivariate predict univariate')
+                        help='forecasting task, options:[M, S, MS]; M:multichannel predict multichannel, S:unichannel predict unichannel, MS:multichannel predict unichannel')
     parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
     parser.add_argument('--freq', type=str, default='h',
                         help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
@@ -74,41 +154,6 @@ def _parse_cmd_args(args=None):
 
     # anomaly detection task
     parser.add_argument('--anomaly_ratio', type=float, default=0.25, help='prior anomaly ratio (%)')
-
-    # model define
-    parser.add_argument('--expand', type=int, default=2, help='expansion factor for Mamba')
-    parser.add_argument('--d_conv', type=int, default=4, help='conv kernel size for Mamba')
-    parser.add_argument('--top_k', type=int, default=5, help='for TimesBlock')
-    parser.add_argument('--num_kernels', type=int, default=6, help='for Inception')
-    parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
-    parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
-    parser.add_argument('--c_out', type=int, default=7, help='output size')
-    parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
-    parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
-    parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
-    parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
-    parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
-    parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
-    parser.add_argument('--factor', type=int, default=1, help='attn factor')
-    parser.add_argument('--distil', action='store_false',
-                        help='whether to use distilling in encoder, using this argument means not using distilling',
-                        default=True)
-    parser.add_argument('--head_dropout', type=float, default=0.0, help='head dropout')
-    parser.add_argument('--dropout', type=float, default=0.1, help='dropout')
-    parser.add_argument('--embed', type=str, default='timeF',
-                        help='time features encoding, options:[timeF, fixed, learned]')
-    parser.add_argument('--activation', type=str, default='gelu', help='activation')
-    parser.add_argument('--channel_independence', type=int, default=1,
-                        help='0: channel dependence 1: channel independence for FreTS model')
-    parser.add_argument('--decomp_method', type=str, default='moving_avg',
-                        help='method of series decompsition, only support moving_avg or dft_decomp')
-    parser.add_argument('--use_norm', type=int, default=1, help='whether to use normalize; True 1 False 0')
-    parser.add_argument('--down_sampling_layers', type=int, default=0, help='num of down sampling layers')
-    parser.add_argument('--down_sampling_window', type=int, default=1, help='down sampling window size')
-    parser.add_argument('--down_sampling_method', type=str, default=None,
-                        help='down sampling method, only support avg, max, conv')
-    parser.add_argument('--seg_len', type=int, default=48,
-                        help='the length of segmen-wise iteration of SegRNN')
 
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
@@ -165,11 +210,14 @@ def _parse_cmd_args(args=None):
     # TimeXer
     parser.add_argument('--patch_len', type=int, default=16, help='patch length')
 
+    # Mamba
+    parser.add_argument('--expand', type=int, default=2, help='expansion factor for Mamba')
+    parser.add_argument('--d_conv', type=int, default=4, help='conv kernel size for Mamba')
+
     # CMamba
     parser.add_argument('--dt_rank', type=int, default=32)
     parser.add_argument('--patch_num', type=int, default=32)
     parser.add_argument('--d_state', type=int, default=16)
-    # parser.add_argument('--d_conv', type=int, default=4)
     parser.add_argument('--dt_min', type=float, default=0.001)
     parser.add_argument('--dt_init', type=str, default='random', help='random or constant')
     parser.add_argument('--dt_max', type=float, default=0.1)
@@ -185,9 +233,13 @@ def _parse_cmd_args(args=None):
     parser.add_argument('--channel_mixup', action='store_true', help='channel mixup', default=False)
     parser.add_argument('--sigma', type=float, default=1.0)
 
+    # common model arguments
+    _add_model_arguments(parser)
+
     # Combiner
-    parser.add_argument('--basemodels', type=_comma_separated_list, default=[], 
-                        help="Comma-separated names of base models to be inlcuded in the combiner model")
+    parser.add_argument('--basemodel', action='append', type=_model_specific_args, default=[], 
+                        help="name and model-specific cmd-line arguments for a base model to be inlcuded in the combiner model [name --option1 val1 ...]")
+
     parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
     parser.add_argument('--hpo_interval', type=int, default=1, help="interval (timesteps >= 1) for Adaptive HPO")
 
@@ -338,8 +390,12 @@ def run(args=None):
     device = _acquire_device(configs)
 
     basemodels = []
-    for model_name in configs.basemodels:
-        basemodels.append(_create_base_model(configs, device, model_name))
+    for (model_name, model_args) in configs.basemodel:
+        bm_configs = configs
+        if model_args is not None:
+            bm_configs = copy.deepcopy(configs)
+            bm_configs.__dict__.update(model_args.__dict__) # add/update with model-specific arguments
+        basemodels.append(_create_base_model(bm_configs, device, model_name))
     
     combinerModel = CombinerModel(configs, basemodels)
     adjusterModel = AdjusterModel(configs, combinerModel)

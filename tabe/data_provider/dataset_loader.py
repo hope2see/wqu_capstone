@@ -59,8 +59,8 @@ class Dataset_TABE(Dataset):
         df_raw = df_raw[['date'] + cols + [self.target]]
         num_vali = int(len(df_raw) * 0.2) #len(df_raw) - num_base_train - num_test
         assert num_vali > self.seq_len, "num_vali should be larger than seq_len"
-        num_base_train = int(len(df_raw) * 0.6)
-        num_ensemble_train = int(len(df_raw) * 0.1)
+        num_base_train = int(len(df_raw) * 0.5)
+        num_ensemble_train = int(len(df_raw) * 0.2)
         num_test = len(df_raw) - num_vali - num_base_train - num_ensemble_train
 
         border1s = [0, num_vali - self.seq_len, num_vali + num_base_train - self.seq_len, len(df_raw) - num_test - self.seq_len]

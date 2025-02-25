@@ -1,11 +1,18 @@
+# NOTE
+# Which one would be better? 
+# 1) Basemodels are not trained once it they have been trained in the first training (and validation) process.
+# 2) Basemodels are trained continuously as a new input comes in.
 
-import os
+
 import time
-
+import numpy as np
 import warnings
 import numpy as np
 import torch
-import torch.nn as nn
+
+from hyperopt import hp, tpe, rand, fmin, Trials, STATUS_OK
+from sklearn.metrics import mean_absolute_error as MAE
+
 
 from utils.tools import EarlyStopping, adjust_learning_rate, visual
 from utils.metrics import metric
@@ -13,26 +20,13 @@ from models import TimesNet, DLinear, PatchTST, iTransformer, TimeMixer, TSMixer
 
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
+import tabe.utils.report as report
+from tabe.utils.mem_util import MemUtil
 
 
-# warnings.filterwarnings('ignore')
-
-# NOTE
-# Which one would be better? 
-# 1) Basemodels are not trained after the first training (and validation) process.
-# 2) Basemodels are trained continuously as a new input comes in.
-
-
-from hyperopt import hp, tpe, rand, fmin, Trials, STATUS_OK
-from sklearn.metrics import mean_absolute_error as MAE
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-
-import warnings
 warnings.filterwarnings('ignore')
 
-from tabe.utils.mem_util import MemUtil
+
 _mem_util = MemUtil(rss_mem=False, python_mem=False)
 
 
@@ -82,10 +76,10 @@ class CombinerModel(AbstractModel):
             'smoothing_factor': hp.uniform('smoothing_factor', 0.0, 1),
         }
         self.hp_dict = None # currently active hyper-parameters
+        self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
         self.basemodel_weights = None # lastly applied weights for basemodels
         self.basemodel_losses = None # the last basemodel_losses. Shape = (len(basemodels), HPO_EVALUATION_PEROID)
         self.truths = None # the last 'y' values. Shape = (HPO_EVALUATION_PEROID)
-        self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
 
 
     def compute_basemodel_weights(self, hp_dict, models_loss, prev_comp_weights):
@@ -162,7 +156,7 @@ class CombinerModel(AbstractModel):
             lookback_window_size = int(hp_dict['lookback_window_size'])
             losses = []
             basemodel_weights = None
-            t = lookback_window_size
+            t = self.MAX_LOOKBACK_WIN # We should start from the same timestep to evaluate the same period.
             while t < len(self.truths):
                 basemodel_weights = self.compute_basemodel_weights(
                     hp_dict, self.basemodel_losses[:, t-lookback_window_size : t], basemodel_weights)
@@ -194,84 +188,6 @@ class CombinerModel(AbstractModel):
         return best_hp, trials
 
 
-    def _show_hpo_result(self, HP, trials, title, filepath=None):
-        print("\nHyperparameters:")
-        hp_df = pd.DataFrame(HP, index=[0])
-        print(hp_df)
-
-        # Plot the optimization progress (loss and loss variance) 
-        losses = [t['result']['loss'] for t in trials]           
-        variances = [t['result']['loss_variance'] for t in trials]
-
-        plt.figure(figsize=(8, 5))
-        plt.plot(losses, marker='o', label='Mean Loss')
-        plt.plot(variances, marker='x', label='Loss Variance')
-        if title:
-            plt.title(title)
-        plt.xlabel("Trial Number")
-        plt.ylabel("Value")
-        plt.legend()    
-        plt.grid(True)
-
-        if filepath is None:
-            plt.show()
-        else:
-            plt.savefig(filepath, bbox_inches='tight')
-
-
-    def _plot_multiple_trials(self, trials_list, trial_labels, value_key, title=None, filepath=None):
-        plt.figure(figsize=(8, 5))
-        for i, trials in enumerate(trials_list):
-            values = [t['result'][value_key] for t in trials] 
-            plt.plot(values, marker='o', label=trial_labels[i])
-        if title:
-            plt.title(title)
-        plt.xlabel("Trial Number")
-        plt.ylabel(value_key)
-        plt.legend()    
-        plt.grid(True)
-        if filepath is None:
-            plt.show()
-        else:
-            plt.savefig(filepath, bbox_inches='tight')
-
-
-    def _plot_forecast(self, y, y_hat, title=None, filepath=None):
-        plt.figure(figsize=(8, 5))
-        df = pd.DataFrame({
-            'Ground Truth': y,
-            'Forecast': y_hat
-        })
-        df.plot()
-        if title:
-            plt.title(title)
-        plt.xlabel("Time")
-        plt.ylabel("Value")
-        plt.legend()    
-        plt.grid(True)
-        if filepath is None:
-            plt.show()
-        else:
-            plt.savefig(filepath, bbox_inches='tight')
-
-
-    def _plot_weights(weights_hist, title=None, filepath=None):
-        plt.figure(figsize=(8, 5))
-        for i in range(weights_hist.shape[1]):
-            plt.plot(weights_hist[:,i], label=f'Component {i}')
-        if title:
-            plt.title(title)
-        plt.ylim(0, 1)
-        plt.xlabel("Time")
-        plt.ylabel("Value")
-        plt.legend()    
-        plt.grid(True)
-        if filepath is None:
-            plt.show()
-        else:
-            plt.savefig(filepath, bbox_inches='tight')
-
-
     def train(self):
         # Train combiner model -------------------------------------
         time_now = time.time()
@@ -298,7 +214,7 @@ class CombinerModel(AbstractModel):
         self.truths = train_dataset.data_y[-hpo_peroid:, -1]
         hp_boa, trials_boa = self._optimize_HP()
 
-        self._show_hpo_result(hp_boa, trials_boa, "Bayesian Optimization for HPO",
+        report.plot_hpo_result(hp_boa, trials_boa, "Bayesian Optimization for HPO",
                               self._get_result_path()+"/hpo_result.pdf")
         self.hp_dict = hp_boa
         
@@ -317,14 +233,13 @@ class CombinerModel(AbstractModel):
         lookback_window_size = int(self.hp_dict['lookback_window_size'])
         basemodel_weights = self.compute_basemodel_weights(
             self.hp_dict, basemodel_losses[:, -lookback_window_size:], self.basemodel_weights)
-
         self.basemodel_weights = basemodel_weights
-        hpo_peroid = min(self.MAX_HPO_EVAL_PEROID, basemodel_losses.shape[1])
-        self.basemodel_losses = basemodel_losses[:, -hpo_peroid:]
-        self.truths = np.concatenate((self.truths, batch_y[-1:, -1, -1]))[-hpo_peroid:]
 
         # Adaptive HPO 
         if self.configs.adaptive_hpo:
+            hpo_peroid = min(self.MAX_HPO_EVAL_PEROID, basemodel_losses.shape[1])
+            self.basemodel_losses = basemodel_losses[:, -hpo_peroid:]
+            self.truths = np.concatenate((self.truths, batch_y[-1:, -1, -1]))[-hpo_peroid:]
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
                 self.hp_dict, _ = self._optimize_HP()
@@ -372,7 +287,7 @@ class CombinerModel(AbstractModel):
         spent_time = (time.time() - time_now) 
         print(f'CombinerModel.test() : {spent_time:.4f}sec elapsed for testing')
 
-        self._plot_weights(weights_hist, "Base Model Weights",
+        report.plot_weights(weights_hist, "Base Model Weights",
                            self._get_result_path() + "/basemodel_weights.pdf")
 
         if need_to_invert_data:
@@ -389,7 +304,7 @@ class CombinerModel(AbstractModel):
         print(f"CombinerModel.test() : Loss ----- ")
         print(f"max={np.max(losses):.6f}, mean={np.mean(losses):.6f}, min={np.min(losses):.6f}, var={np.var(losses):.6f})")
 
-        self._plot_forecast(y, y_hat, "Combiner Forecast", 
+        report.plot_forecast(y, y_hat, "Combiner Forecast", 
                             self._get_result_path() + "/combiner_forecast.pdf")
 
         return y, y_hat, losses

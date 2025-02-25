@@ -26,6 +26,7 @@ from tabe.models.combiner import CombinerModel
 from tabe.models.adjuster import AdjusterModel
 from tabe.utils.misc_util import get_config_str
 from tabe.utils.mem_util import MemUtil
+import tabe.utils.report as report
 from cmamba.models import CMamba
 
 _mem_util = MemUtil(rss_mem=True, python_mem=True)
@@ -207,32 +208,6 @@ def _parse_cmd_args(args=None):
                         help="Discrimitive shapeDTW warp preset augmentation")
     parser.add_argument('--extra_tag', type=str, default="", help="Anything extra")
 
-    # TimeXer
-    parser.add_argument('--patch_len', type=int, default=16, help='patch length')
-
-    # Mamba
-    parser.add_argument('--expand', type=int, default=2, help='expansion factor for Mamba')
-    parser.add_argument('--d_conv', type=int, default=4, help='conv kernel size for Mamba')
-
-    # CMamba
-    parser.add_argument('--dt_rank', type=int, default=32)
-    parser.add_argument('--patch_num', type=int, default=32)
-    parser.add_argument('--d_state', type=int, default=16)
-    parser.add_argument('--dt_min', type=float, default=0.001)
-    parser.add_argument('--dt_init', type=str, default='random', help='random or constant')
-    parser.add_argument('--dt_max', type=float, default=0.1)
-    parser.add_argument('--dt_scale', type=float, default=1.0)
-    parser.add_argument('--dt_init_floor', type=float, default=1e-4)
-    parser.add_argument('--bias', type=bool, default=True)
-    parser.add_argument('--conv_bias', type=bool, default=True)
-    parser.add_argument('--pscan', action='store_true', help='use parallel scan mode or sequential mode when training', default=False)
-    parser.add_argument('--avg', action='store_true', help='avg pooling', default=False)
-    parser.add_argument('--max', action='store_true', help='max pooling', default=False)
-    parser.add_argument('--reduction', type=int, default=2)
-    parser.add_argument('--gddmlp', action='store_true', help='global data-dependent mlp', default=False)
-    parser.add_argument('--channel_mixup', action='store_true', help='channel mixup', default=False)
-    parser.add_argument('--sigma', type=float, default=1.0)
-
     # common model arguments
     _add_model_arguments(parser)
 
@@ -240,6 +215,11 @@ def _parse_cmd_args(args=None):
     parser.add_argument('--basemodel', action='append', type=_model_specific_args, default=[], 
                         help="name and model-specific cmd-line arguments for a base model to be inlcuded in the combiner model [name --option1 val1 ...]")
 
+    # Adjuster
+    parser.add_argument('--max_gp_opt_steps', type=int, default=2000, 
+                        help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
+
+    # Adaptive HPO (for Combiner, Adjuster)
     parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
     parser.add_argument('--hpo_interval', type=int, default=1, help="interval (timesteps >= 1) for Adaptive HPO")
 
@@ -316,58 +296,6 @@ def _create_base_model(configs, device, model_name) -> AbstractModel:
     return model
 
 
-def plot_forecast_result(truth, adjuster_pred, combiner_pred, base_preds, basemodels, filepath):
-    plt.figure(figsize=(12, 6))
-    plt.title('Forecast Comparison')     
-    plt.ylabel('Target (BTC return in 25 days)')     
-    plt.xlabel('Test Duration (Days)')
-    plt.plot(truth, label='GroundTruth', linewidth=2, color='black')
-    plt.plot(adjuster_pred, label="Adjuster Model", linewidth=2, color='red')
-    plt.plot(combiner_pred, label="Combiner Model", linewidth=2, color='blue')
-    for i, basemodel in enumerate(basemodels):
-        plt.plot(base_preds[i], label=f"Base Model [{basemodel.name}]", linewidth=1)
-    plt.legend()
-    plt.savefig(filepath, bbox_inches='tight')
-
-
-def _report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
-    metric_dict = {
-        "MAE": MAE, 
-        "MSE": MSE, 
-        "RMSE": RMSE, 
-        "MAPE": MAPE, 
-        "MSPE": MSPE
-    }
-
-    losses_adj = {}
-    losses_cbm = {}
-    losses_bsm = {}
-
-    if filepath is not None:
-        f = open(filepath, 'w')
-
-    print("\n--------------------------------")
-    print("Losses of all models")
-    print("--------------------------------")
-
-    for m in metric_dict:
-        losses_adj[m] = metric_dict[m](y_hat_adj, y)
-        losses_cbm[m] = metric_dict[m](y_hat_cbm, y)
-        losses_bsm[m] = []
-        for i in range(len(y_hat_bsm)):
-            losses_bsm[m].append(metric_dict[m](y_hat_bsm[i], y))
-        output_str = f"{m:<4}: {losses_adj[m]:.6f}, {losses_cbm[m]:.6f}, " \
-                    +  ", ".join([f"{loss:.6f}" for loss in losses_bsm[m]])
-        print(output_str)
-        if filepath is not None:
-            f.write(output_str + '\n')
-
-    if filepath is not None:
-        f.close()
-
-    return losses_adj, losses_cbm, losses_bsm
-
-
 def _cleanup_gpu_cache(configs):
     if configs.gpu_type == 'mps':
         # Only if mps.empty_cache() is available, then call it
@@ -429,16 +357,12 @@ def run(args=None):
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
 
-    _report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, 
-                  filepath = result_dir + "/models_losses.txt")
-
-    plot_forecast_result(y, y_hat, y_hat_cbm, y_hat_bsm, basemodels, 
+    report.report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, filepath = result_dir + "/models_losses.txt")
+    report.plot_forecast_result(y, y_hat, y_hat_cbm, y_hat_bsm, basemodels, 
                         filepath = result_dir + "/models_forecast_comparison.pdf")
-
-    adjusterModel.plot_gpmodel()
+    report.plot_gpmodel(adjusterModel.gpm, filepath=result_dir + "/gpmodel_analysis.pdf")
 
     _cleanup_gpu_cache(configs)
-
     _mem_util.stop_python_memory_tracking()
 
     print('Bye ~~~~~~')

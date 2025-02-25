@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import torch
+import pyro.contrib.gp as gp
+from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
 
 
 def plot_multiple_trials(trials_list, trial_labels, value_key, title=None, filepath=None):

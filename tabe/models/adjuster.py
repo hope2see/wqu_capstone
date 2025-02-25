@@ -189,7 +189,7 @@ class AdjusterModel(AbstractModel):
         assert batch_x.shape[0]==1 and batch_y.shape[0]==1
 
         # estimate the next deviation with the last deviation 
-        pred_deviation = self._predict_next()
+        pred_deviation = self._predict_next(self.gpm)
 
         # get combiner model's predition
         y_hat_cbm, y_hat_bsm = self.combiner_model.proceed_onestep(

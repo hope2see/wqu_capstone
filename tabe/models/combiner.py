@@ -213,7 +213,7 @@ class CombinerModel(AbstractModel):
         hpo_peroid = min(self.MAX_HPO_EVAL_PEROID, len(train_loader))
         self.basemodel_losses = basemodel_losses[:, -hpo_peroid:]
         self.truths = train_dataset.data_y[-hpo_peroid:, -1]
-        hp_boa, trials_boa = self._optimize_HP()
+        hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
 
         report.plot_hpo_result(hp_boa, trials_boa, "Bayesian Optimization for HPO",
                               self._get_result_path()+"/hpo_result.pdf")
@@ -243,7 +243,7 @@ class CombinerModel(AbstractModel):
             self.truths = np.concatenate((self.truths, batch_y[-1:, -1, -1]))[-hpo_peroid:]
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
-                self.hp_dict, _ = self._optimize_HP()
+                self.hp_dict, _ = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
                 self.hpo_counter = 0                
 
         y_hat = np.dot(basemodel_weights, basemodel_preds)

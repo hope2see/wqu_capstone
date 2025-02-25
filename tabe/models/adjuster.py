@@ -173,7 +173,7 @@ class AdjusterModel(AbstractModel):
         hpo_peroid = min(self.MAX_HPO_EVAL_PEROID, len(train_loader))
         self.y_hat_cbm = y_hat_cbm[-hpo_peroid:]
         self.truths = y[-hpo_peroid:]
-        hp_boa, trials_boa = self._optimize_HP()
+        hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
         report.plot_hpo_result(hp_boa, trials_boa, "Bayesian Optimization for HPO",
                               self._get_result_path()+"/hpo_result.pdf")
         self.hp_dict = hp_boa
@@ -214,7 +214,7 @@ class AdjusterModel(AbstractModel):
                 self.truths = self.truths[:, -self.MAX_HPO_EVAL_PEROID:]
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
-                self.hp_dict, _ = self._optimize_HP()
+                self.hp_dict, _ = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
                 self.hpo_counter = 0                
 
         return y_hat, y_hat_cbm, y_hat_bsm

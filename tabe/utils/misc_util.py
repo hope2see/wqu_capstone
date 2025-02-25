@@ -1,8 +1,44 @@
 
-# import os 
-# import argparse
+import os 
+import logging
 import numpy as np
 import torch
+import sys
+import typing
+import time 
+
+
+# logging -----------------------------------------------------
+
+_DEFAULT_LOGGER = "tabe_logger"
+
+_DEFAULT_FORMATTER = logging.Formatter(
+    '%(asctime)s - %(filename)s[pid:%(process)d;line:%(lineno)d:%(funcName)s] - %(levelname)s: %(message)s'
+)
+
+_h_stdout = logging.StreamHandler(stream=sys.stdout)
+_h_stdout.setFormatter(_DEFAULT_FORMATTER)
+_h_stdout.setLevel(logging.DEBUG)
+
+_h_file = logging.FileHandler(f'tabe_log_{time.time()}.log', mode='w')  
+_h_file.setFormatter(_DEFAULT_FORMATTER)
+_h_file.setLevel(logging.INFO)
+
+_DEFAULT_HANDLERS = [_h_stdout, _h_file]
+
+_LOGGER_CACHE = {}  # type: typing.Dict[str, logging.Logger]
+
+def get_logger(name, level="DEBUG", handlers=None, update=False):
+    if name in _LOGGER_CACHE and not update:
+        return _LOGGER_CACHE[name]
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.handlers = handlers or _DEFAULT_HANDLERS
+    logger.propagate = False
+    return logger
+
+logger = get_logger(_DEFAULT_LOGGER)
+
 
 
 def get_config_str(configs):
@@ -31,7 +67,7 @@ class EarlyStopping:
             self.save_checkpoint(val_loss, model, path)
         elif score < self.best_score + self.delta:
             self.counter += 1
-            print(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+            logger.debug(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
                 self.early_stop = True
         else:
@@ -41,7 +77,7 @@ class EarlyStopping:
 
     def save_checkpoint(self, val_loss, model, path):
         if self.verbose:
-            print(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            logger.info(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
         torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
         self.val_loss_min = val_loss
 
@@ -51,3 +87,4 @@ class EarlyStopping:
     def reset(self):
         self.early_stop = False
         self.counter = 0
+

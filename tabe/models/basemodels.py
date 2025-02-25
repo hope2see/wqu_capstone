@@ -16,7 +16,7 @@ from utils.metrics import metric
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-from tabe.utils.misc_util import EarlyStopping
+from tabe.utils.misc_util import EarlyStopping, logger
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 
@@ -89,8 +89,8 @@ class TSLibModel(AbstractModel):
         return model_optim
 
     def load_saved_model(self):
-        print('loading model')
         path = self._get_checkpoint_path() + '/checkpoint.pth'
+        logger.info(f'loading saved model from {path}')
         self.model.load_state_dict(torch.load(path))
 
     def _forward_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion):
@@ -183,16 +183,16 @@ class TSLibModel(AbstractModel):
             train_loss = np.average(train_loss)
             vali_loss = self._validate(vali_data, vali_loader, criterion)
 
-            print(f"Epoch: {epoch + 1} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f}")
+            logger.info(f"Epoch: {epoch + 1} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f}")
 
             self.early_stopping(vali_loss, self.model, self._get_checkpoint_path())
             if self.early_stopping.early_stop:
-                print("Early stopping")
+                logger.info("Early stopping")
                 break
 
             adjust_learning_rate(model_optim, epoch + 1, self.configs)
 
-        print(f"_train_batch_with_validation: cost time: {time.time() - time_now}")
+        logger.info(f"_train_batch_with_validation: cost time: {time.time() - time_now}")
 
         # load the best model found
         self.load_saved_model() 
@@ -230,10 +230,10 @@ class TSLibModel(AbstractModel):
                 train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
-                    print("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                    logger.info("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.configs.train_epochs - epoch) * train_steps - i)
-                    print('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
+                    logger.info('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
 
@@ -245,16 +245,13 @@ class TSLibModel(AbstractModel):
                     loss.backward()
                     model_optim.step()
 
-            print("Epoch: {} cost time: {}".format(epoch + 1, time.time() - epoch_time))
             train_loss = np.average(train_loss)
             vali_loss = self._validate(vali_data, vali_loader, criterion)
-
-            print("Epoch: {0}, Steps: {1} | Train Loss: {2:.7f} Vali Loss: {3:.7f}".format(
-                epoch + 1, train_steps, train_loss, vali_loss))
+            logger.info(f"Epoch {epoch+1}, Train Loss: {train_loss:.6f} Vali Loss: {vali_loss:.6f}, Spent Time: {time.time() - epoch_time:.6f}")
 
             self.early_stopping(vali_loss, self.model, self._get_checkpoint_path())
             if self.early_stopping.early_stop:
-                print("Early stopping")
+                logger.info("Early stopping")
                 break
 
             adjust_learning_rate(model_optim, epoch + 1, self.configs)
@@ -361,14 +358,14 @@ class TSLibModel(AbstractModel):
                         input = test_data.inverse_transform(input.reshape(shape[0] * shape[1], -1)).reshape(shape)
                     gt = np.concatenate((input[0, :, -1], true[0, :, -1]), axis=0)
                     pd = np.concatenate((input[0, :, -1], pred[0, :, -1]), axis=0)
-                    visual(gt, pd, os.path.join(result_path, str(i) + '.pdf'))
+                    visual(gt, pd, os.path.join(self._get_result_path(), str(i) + '.pdf'))
 
         preds = np.concatenate(preds, axis=0)
         trues = np.concatenate(trues, axis=0)
-        print('test shape:', preds.shape, trues.shape)
+        # logger.debug('test shape:', preds.shape, trues.shape)
         preds = preds.reshape(-1, preds.shape[-2], preds.shape[-1])
         trues = trues.reshape(-1, trues.shape[-2], trues.shape[-1])
-        print('test shape:', preds.shape, trues.shape)
+        # logger.debug('test shape:', preds.shape, trues.shape)
 
         # dtw calculation
         if self.configs.use_dtw:
@@ -378,7 +375,7 @@ class TSLibModel(AbstractModel):
                 x = preds[i].reshape(-1, 1)
                 y = trues[i].reshape(-1, 1)
                 if i % 100 == 0:
-                    print("calculating dtw iter:", i)
+                    logger.debug("calculating dtw iter:", i)
                 d, _, _, _ = accelerated_dtw(x, y, dist=manhattan_distance)
                 dtw_list.append(d)
             dtw = np.array(dtw_list).mean()
@@ -386,7 +383,7 @@ class TSLibModel(AbstractModel):
             dtw = 'Not calculated'
 
         mae, mse, rmse, mape, mspe = metric(preds, trues)
-        print('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
+        logger.info('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
         f = open("result_long_term_forecast.txt", 'a')
         f.write(self.setting_str + "  \n")
         f.write('mse:{}, mae:{}, dtw:{}'.format(mse, mae, dtw))
@@ -394,12 +391,10 @@ class TSLibModel(AbstractModel):
         f.write('\n')
         f.close()
 
-        result_path = self._get_result_path()
-
-        np.save(result_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
-        np.save(result_path + 'pred.npy', preds)
-        np.save(result_path + 'true.npy', trues)
-
+        # result_path = self._get_result_path()
+        # np.save(result_path + 'metrics.npy', np.array([mae, mse, rmse, mape, mspe]))
+        # np.save(result_path + 'pred.npy', preds)
+        # np.save(result_path + 'true.npy', trues)
         return preds
 
 

@@ -10,12 +10,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import random
 import torch
-import torch.nn as nn
-from torch import optim
 
 # Time-Series-Library
 from utils.print_args import print_args
 from models import TimesNet, DLinear, PatchTST, iTransformer, TimeXer, TSMixer
+
+# CMamba
+from cmamba.models import CMamba
 
 # TABE 
 from tabe.models.abstractmodel import AbstractModel
@@ -26,7 +27,8 @@ from tabe.models.adjuster import AdjusterModel
 from tabe.utils.misc_util import get_config_str
 from tabe.utils.mem_util import MemUtil
 import tabe.utils.report as report
-from cmamba.models import CMamba
+from tabe.utils.misc_util import logger
+
 
 _mem_util = MemUtil(rss_mem=True, python_mem=True)
 
@@ -238,16 +240,16 @@ def _set_device_configs(configs):
     if configs.use_gpu and torch.cuda.is_available():
         configs.device = torch.device('cuda:{}'.format(configs.gpu))
         configs.gpu_type = 'cuda' # by default
-        print('Using GPU')
+        logger.info('configured to use GPU')
     # MPS is not fully supported. It causes error in CMamba (and probably in TimeMoE)
     # elif configs.use_gpu and hasattr(torch.backends, "mps") and torch.backends.mps.is_available():
     #     configs.device = torch.device("mps")
     #     configs.gpu_type = 'mps' # If not set, it causes an error in Exp_Basic._acquire_device()
-    #     print('Using mps')
+    #     logger.info('Using mps')
     else:
         configs.use_gpu = False
         configs.device = torch.device("cpu")
-        print('Using cpu')
+        logger.info('configured to use CPU')
 
     if configs.use_gpu and configs.use_multi_gpu:
         configs.devices = configs.devices.replace(' ', '')
@@ -261,13 +263,13 @@ def _acquire_device(configs):
         os.environ["CUDA_VISIBLE_DEVICES"] = \
             str(configs.gpu) if not configs.use_multi_gpu else configs.devices
         device = torch.device('cuda:{}'.format(configs.gpu))
-        print('Use GPU: cuda:{}'.format(configs.gpu))
+        logger.info('Use GPU: cuda:{}'.format(configs.gpu))
     elif configs.use_gpu and configs.gpu_type == 'mps':
         device = torch.device('mps')
-        print('Use GPU: mps')
+        logger.info('Use GPU: mps')
     else:
         device = torch.device('cpu')
-        print('Use CPU')
+        logger.info('Use CPU')
     return device
 
 
@@ -345,27 +347,27 @@ def run(args=None):
     adjusterModel = AdjusterModel(adjuster_configs, combinerModel)
 
     if configs.is_training:
-        print('\nTraining base models ==================================')
+        logger.info('Training base models ==================================')
         for basemodel in basemodels:
             # TODO : Better to optimize the the reduncancy of the same proceudures in training base models. 
-            print(f'\nTraining {basemodel.name} ...')
+            logger.info(f'Training {basemodel.name} ...')
             basemodel.train()
     else:
-        print('\nLoading trained base models ======================')
+        logger.info('Loading trained base models ======================')
         for basemodel in basemodels:
             basemodel.load_saved_model()
 
     _mem_util.print_memory_usage()
 
-    print('\nTraining combiner model ======================')
+    logger.info('Training combiner model ======================')
     combinerModel.train()
     _mem_util.print_memory_usage()
 
-    print('\nTraining adjuster model ======================')
+    logger.info('Training adjuster model ======================')
     adjusterModel.train()
     _mem_util.print_memory_usage()
 
-    print('\nTesting ==================================')
+    logger.info('Testing ==================================')
     y, y_hat, y_hat_cbm, y_hat_bsm = adjusterModel.test()
     _mem_util.print_memory_usage()
 
@@ -381,22 +383,8 @@ def run(args=None):
     _cleanup_gpu_cache(configs)
     _mem_util.stop_python_memory_tracking()
 
-    print('Bye ~~~~~~')
+    logger.info('Bye ~~~~~~')
 
 
 if __name__ == '__main__':
     run()
-
-    # parser = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
-    # parser.add_argument("--foo", default=10, help="An optional arg")
-    # parser.add_argument("--bar", help="Another optional arg")
-
-    # v = '--bar 20'
-    # argv_list = [v.strip() for v in v.split()]
-
-    # for action in parser._actions:
-    #     if action.dest != 'help':
-    #         action.default = argparse.SUPPRESS
-
-    # args = parser.parse_args(argv_list)
-    # print(args)

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import torch
 import pyro.contrib.gp as gp
 from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
-
+from tabe.utils.misc_util import logger
 
 def plot_multiple_trials(trials_list, trial_labels, value_key, title=None, filepath=None):
     plt.figure(figsize=(8, 5))
@@ -79,9 +79,12 @@ def plot_weights(weights_hist, title=None, filepath=None):
 
 
 def plot_hpo_result(HP, trials, title, filepath=None):
-    print("\nHyperparameters:")
+    import io
+    buffer = io.StringIO()
+    print("\nHyperparameters:", file=buffer)
     hp_df = pd.DataFrame(HP, index=[0])
-    print(hp_df)
+    print(hp_df, file=buffer)
+    logger.info(buffer.getvalue())
 
     # Plot the optimization progress (loss and loss variance) 
     losses = [t['result']['loss'] for t in trials]           
@@ -145,7 +148,6 @@ def plot_gpmodel(gpm, plot_observed_data=True, plot_predictions=True, n_test=500
         plt.savefig(filepath, bbox_inches='tight')
 
 
-
 def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     metric_dict = {
         "MAE": MAE, 
@@ -162,9 +164,9 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     if filepath is not None:
         f = open(filepath, 'w')
 
-    print("\n--------------------------------")
-    print("Losses of all models")
-    print("--------------------------------")
+    logger.info("\n--------------------------------")
+    logger.info("Losses of all models")
+    logger.info("--------------------------------")
 
     for m in metric_dict:
         losses_adj[m] = metric_dict[m](y_hat_adj, y)
@@ -174,7 +176,7 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
             losses_bsm[m].append(metric_dict[m](y_hat_bsm[i], y))
         output_str = f"{m:<4}: {losses_adj[m]:.6f}, {losses_cbm[m]:.6f}, " \
                     +  ", ".join([f"{loss:.6f}" for loss in losses_bsm[m]])
-        print(output_str)
+        logger.info(output_str)
         if filepath is not None:
             f.write(output_str + '\n')
 

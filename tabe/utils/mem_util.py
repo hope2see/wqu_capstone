@@ -1,6 +1,7 @@
 import os
 import psutil
 import tracemalloc
+from tabe.utils.misc_util import logger
 
 class MemUtil(object):
     _tracemalloc_started = False 
@@ -20,13 +21,13 @@ class MemUtil(object):
         if self.rss_mem_init is None:
             self.rss_mem_init = current
             self.rss_mem_prev = current
-        print(f"RSS Mem Usage: cur={current:.2f} incr={current - self.rss_mem_prev:.2f} "
+        logger.info(f"RSS Mem Usage: cur={current:.2f} incr={current - self.rss_mem_prev:.2f} "
                 f"acc_incr={current - self.rss_mem_init:.2f} MB")
         self.rss_mem_prev = current
 
     def start_python_memory_tracking(self):
         if MemUtil._tracemalloc_started:
-            print("Warning: start_python_memory_tracking() is called before stop_python_memory_tracking()")
+            logger.warn("Warning: start_python_memory_tracking() is called before stop_python_memory_tracking()")
         else:
             tracemalloc.start()
             MemUtil._tracemalloc_started = True
@@ -36,7 +37,7 @@ class MemUtil(object):
             tracemalloc.stop()
             MemUtil._tracemalloc_started = False
         else:
-            print("Warning: stop_python_memory_tracking() is called before start_python_memory_tracking()")
+            logger.warn("Warning: stop_python_memory_tracking() is called before start_python_memory_tracking()")
 
     def print_python_memory_usage(self):
         current, peak = tracemalloc.get_traced_memory()
@@ -45,7 +46,7 @@ class MemUtil(object):
         if self.python_mem_init is None:
             self.python_mem_init = current
             self.python_mem_prev = current
-        print(f"Python Mem Usage: cur={current:.2f} incr={current - self.python_mem_prev:.2f} "
+        logger.info(f"Python Mem Usage: cur={current:.2f} incr={current - self.python_mem_prev:.2f} "
                 f"acc_incr={current - self.python_mem_init:.2f} peak={peak:.2f} MB")
         self.python_mem_prev = current
 

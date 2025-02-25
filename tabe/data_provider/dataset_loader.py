@@ -4,8 +4,9 @@ import pandas as pd
 from utils.timefeatures import time_features
 from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import StandardScaler
-import warnings
+from tabe.utils.misc_util import logger
 
+import warnings
 warnings.filterwarnings('ignore')
 
 
@@ -157,7 +158,7 @@ def _data_provider(args, flag, step_by_step=False):
             win_size=args.seq_len,
             flag=flag,
         )
-        print(flag, len(data_set))
+        logger.info(flag, len(data_set))
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,

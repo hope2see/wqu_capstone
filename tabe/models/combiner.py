@@ -22,6 +22,7 @@ from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 import tabe.utils.report as report
 from tabe.utils.mem_util import MemUtil
+from tabe.utils.misc_util import logger
 
 
 warnings.filterwarnings('ignore')
@@ -183,7 +184,7 @@ class CombinerModel(AbstractModel):
                        trials=trials, rstate=np.random.default_rng(1), verbose=True)
 
         spent_time = (time.time() - time_now) 
-        print(f'Combiner._optimize_HP() : {spent_time:.4f} sec elapsed')
+        logger.info(f'Combiner._optimize_HP() : {spent_time:.4f} sec elapsed')
 
         return best_hp, trials
 
@@ -206,7 +207,7 @@ class CombinerModel(AbstractModel):
             _mem_util.print_memory_usage()
 
         spent_time = (time.time() - time_now) 
-        print(f"CombinerModel.train() : {spent_time:.4f} sec elapsed for getting base models' predictions")
+        logger.info(f"CombinerModel.train() : {spent_time:.4f} sec elapsed for getting base models' predictions")
 
         # Hyperparameter Optimization -------------------------------------
         hpo_peroid = min(self.MAX_HPO_EVAL_PEROID, len(train_loader))
@@ -285,7 +286,7 @@ class CombinerModel(AbstractModel):
             weights_hist[t] = basemodel_weights
 
         spent_time = (time.time() - time_now) 
-        print(f'CombinerModel.test() : {spent_time:.4f}sec elapsed for testing')
+        logger.info(f'CombinerModel.test() : {spent_time:.4f}sec elapsed for testing')
 
         report.plot_weights(weights_hist, "Base Model Weights",
                            self._get_result_path() + "/basemodel_weights.pdf")
@@ -301,8 +302,8 @@ class CombinerModel(AbstractModel):
 
         losses = criterion(torch.tensor(y_hat), y)
 
-        print(f"CombinerModel.test() : Loss ----- ")
-        print(f"max={np.max(losses):.6f}, mean={np.mean(losses):.6f}, min={np.min(losses):.6f}, var={np.var(losses):.6f})")
+        logger.info(f"CombinerModel.test() : Loss ----- ")
+        logger.info(f"max={np.max(losses):.6f}, mean={np.mean(losses):.6f}, min={np.min(losses):.6f}, var={np.var(losses):.6f})")
 
         report.plot_forecast(y, y_hat, "Combiner Forecast", 
                             self._get_result_path() + "/combiner_forecast.pdf")

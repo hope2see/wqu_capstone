@@ -7,17 +7,29 @@ import pyro.contrib.gp as gp
 from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
 from tabe.utils.misc_util import logger
 
-def plot_multiple_trials(trials_list, trial_labels, value_key, title=None, filepath=None):
+
+def plot_hpo_result(HP, trials, title, filepath=None):
+    import io
+    buffer = io.StringIO()
+    print("\nHyperparameters:", file=buffer)
+    hp_df = pd.DataFrame(HP, index=[0])
+    print(hp_df, file=buffer)
+    logger.info(buffer.getvalue())
+
+    # Plot the optimization progress (loss and loss variance) 
+    losses = [t['result']['loss'] for t in trials]           
+    # variances = [t['result']['loss_variance'] for t in trials]
+    trial_numbers = np.arange(1, len(losses))
+
     plt.figure(figsize=(8, 5))
-    for i, trials in enumerate(trials_list):
-        values = [t['result'][value_key] for t in trials] 
-        plt.plot(values, marker='o', label=trial_labels[i])
-    if title:
-        plt.title(title)
+    plt.plot(trial_numbers, losses, marker='o')
+    # plt.plot(trial_numbers, variances, marker='x', label='Loss Variance')
     plt.xlabel("Trial Number")
-    plt.ylabel(value_key)
+    plt.ylabel("Mean Loss")
     plt.legend()    
     plt.grid(True)
+    if title:
+        plt.title(title)
     if filepath is None:
         plt.show()
     else:
@@ -46,20 +58,19 @@ def plot_forecast(y, y_hat, title=None, filepath=None):
 def plot_forecast_result(truth, adjuster_pred,  adj_pred_q_low, adj_pred_q_high, combiner_pred, base_preds, basemodels, filepath=None):
     plt.figure(figsize=(12, 6))
     plt.title('Forecast Comparison')     
-    plt.ylabel('Target (BTC return in 25 days)')     
+    plt.ylabel('Target')
     plt.xlabel('Test Duration (Days)')
-    plt.plot(truth, label='GroundTruth', linewidth=2, color='black')
-    plt.plot(adjuster_pred, label="Adjuster Model", linewidth=2, color='red')
+    plt.plot(truth, label='GroundTruth', linewidth=1.5, color='black')
+    plt.plot(adjuster_pred, label="Adjuster Model", linewidth=1.5, color='red')
     plt.fill_between(
         np.linspace(0, len(truth)-1, len(truth)), 
         adj_pred_q_low, adj_pred_q_high,
         color='red', alpha=0.1,
         label="area in quantiles"
     )        
-
-    plt.plot(combiner_pred, label="Combiner Model", linewidth=2, color='blue')
+    plt.plot(combiner_pred, label="Combiner Model", linewidth=1.5, linestyle="--", color='blue')
     for i, basemodel in enumerate(basemodels):
-        plt.plot(base_preds[i], label=f"Base Model [{basemodel.name}]", linewidth=1)
+        plt.plot(base_preds[i], label=f"Base Model [{basemodel.name}]", linewidth=1.5, linestyle=":")
     plt.legend()
     if filepath is None:
         plt.show()
@@ -79,34 +90,6 @@ def plot_weights(weights_hist, title=None, filepath=None):
     plt.ylabel("Value")
     plt.legend()    
     plt.grid(True)
-    if filepath is None:
-        plt.show()
-    else:
-        plt.savefig(filepath, bbox_inches='tight')
-
-
-def plot_hpo_result(HP, trials, title, filepath=None):
-    import io
-    buffer = io.StringIO()
-    print("\nHyperparameters:", file=buffer)
-    hp_df = pd.DataFrame(HP, index=[0])
-    print(hp_df, file=buffer)
-    logger.info(buffer.getvalue())
-
-    # Plot the optimization progress (loss and loss variance) 
-    losses = [t['result']['loss'] for t in trials]           
-    variances = [t['result']['loss_variance'] for t in trials]
-
-    plt.figure(figsize=(8, 5))
-    plt.plot(losses, marker='o', label='Mean Loss')
-    plt.plot(variances, marker='x', label='Loss Variance')
-    if title:
-        plt.title(title)
-    plt.xlabel("Trial Number")
-    plt.ylabel("Value")
-    plt.legend()    
-    plt.grid(True)
-
     if filepath is None:
         plt.show()
     else:

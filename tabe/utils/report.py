@@ -1,4 +1,5 @@
 
+import io
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -9,17 +10,16 @@ from tabe.utils.misc_util import logger
 
 
 def plot_hpo_result(HP, trials, title, filepath=None):
-    import io
     buffer = io.StringIO()
     print("\nHyperparameters:", file=buffer)
     hp_df = pd.DataFrame(HP, index=[0])
-    print(hp_df, file=buffer)
+    print(hp_df.to_string(index=False), file=buffer)
     logger.info(buffer.getvalue())
 
     # Plot the optimization progress (loss and loss variance) 
     losses = [t['result']['loss'] for t in trials]           
     # variances = [t['result']['loss_variance'] for t in trials]
-    trial_numbers = np.arange(1, len(losses))
+    trial_numbers = np.arange(1, len(losses)+1)
 
     plt.figure(figsize=(8, 5))
     plt.plot(trial_numbers, losses, marker='o')
@@ -151,12 +151,12 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     losses_cbm = {}
     losses_bsm = {}
 
-    if filepath is not None:
-        f = open(filepath, 'w')
-
     logger.info("\n--------------------------------")
     logger.info("Losses of all models")
     logger.info("--------------------------------")
+
+    if filepath is not None:
+        f = open(filepath, 'w')
 
     for m in metric_dict:
         losses_adj[m] = metric_dict[m](y_hat_adj, y)
@@ -174,3 +174,10 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
         f.close()
 
     return losses_adj, losses_cbm, losses_bsm
+
+
+def report_trading_simulation(df_sim_result, filepath=None):
+    buffer = io.StringIO()
+    print("\nTrading Simulation Results:", file=buffer)
+    print(df_sim_result, file=buffer)
+    logger.info(buffer.getvalue())

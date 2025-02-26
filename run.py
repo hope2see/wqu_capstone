@@ -8,6 +8,7 @@ import argparse
 import copy
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import random
 import torch
 
@@ -27,7 +28,7 @@ from tabe.models.adjuster import AdjusterModel
 from tabe.utils.misc_util import get_config_str
 from tabe.utils.mem_util import MemUtil
 import tabe.utils.report as report
-from tabe.utils.misc_util import logger
+from tabe.utils.misc_util import logger, simulate_trading
 
 
 _mem_util = MemUtil(rss_mem=True, python_mem=True)
@@ -352,37 +353,53 @@ def run(args=None):
     adjusterModel = AdjusterModel(adjuster_configs, combinerModel)
 
     if configs.is_training:
-        logger.info('Training base models ==================================')
+        logger.info('Training base models ==================================\n')
         for basemodel in basemodels:
             # TODO : Better to optimize the the reduncancy of the same proceudures in training base models. 
             logger.info(f'Training {basemodel.name} ...')
             basemodel.train()
     else:
-        logger.info('Loading trained base models ======================')
+        logger.info('Loading trained base models ======================\n')
         for basemodel in basemodels:
             basemodel.load_saved_model()
 
     _mem_util.print_memory_usage()
 
-    logger.info('Training combiner model ======================')
+    logger.info('Training combiner model ======================\n')
     combinerModel.train()
     _mem_util.print_memory_usage()
 
-    logger.info('Training adjuster model ======================')
+    logger.info('Training adjuster model ======================\n')
     adjusterModel.train()
     _mem_util.print_memory_usage()
 
-    logger.info('Testing ==================================')
-    y, y_hat, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high = adjusterModel.test()
+    logger.info('Testing ==================================\n')
+    y, y_hat_adj, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high = adjusterModel.test()
     _mem_util.print_memory_usage()
+
+    # result reporting -----------------
 
     result_dir = "./result/" + get_config_str(configs)
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
 
-    report.report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, filepath = result_dir + "/models_losses.txt")
-    report.plot_forecast_result(y, y_hat,  y_hat_q_low, y_hat_q_high, y_hat_cbm, y_hat_bsm, basemodels,
+    report.report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath = result_dir + "/models_losses.txt")
+    report.plot_forecast_result(y, y_hat_adj,  y_hat_q_low, y_hat_q_high, y_hat_cbm, y_hat_bsm, basemodels,
                         filepath = result_dir + "/models_forecast_comparison.pdf")
+
+    # Trading Simulations
+    df_sim_result = pd.DataFrame()
+    ac, tc, stc = simulate_trading(y, y_hat_adj)
+    df_sim_result['Adjuster'] = [ac, tc, stc]
+    ac, tc, stc = simulate_trading(y, y_hat_q_low, buy_threshold=0.001)
+    df_sim_result['Adjuster_p'] = [ac, tc, stc]
+    ac, tc, stc = simulate_trading(y, y_hat_cbm)
+    df_sim_result['Combiner'] = [ac, tc, stc]
+    for i, bm in enumerate(basemodels):
+        ac, tc, stc = simulate_trading(y, y_hat_bsm[i])
+        df_sim_result[bm.name] = [ac, tc, stc]
+    df_sim_result.index = ['Acc. Ret', '# Trades', '# Win_Trades']
+    report.report_trading_simulation(df_sim_result, filepath = result_dir + "/trading_simulation.txt")
 
     _cleanup_gpu_cache(configs)
     _mem_util.stop_python_memory_tracking()

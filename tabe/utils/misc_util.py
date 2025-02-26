@@ -96,7 +96,22 @@ class EarlyStopping:
         self.early_stop = False
         self.counter = 0
 
-#  -----------------------------------------------------
 
+# -----------------------------------------------------
+# Trading Simulation
 
-# def simulate_trading(pred):
+def simulate_trading(true_rets, pred_rets, buy_threshold=0.005, fee_rate=0.001):
+    assert len(true_rets) == len(pred_rets)
+    balance = 1.0
+    trade_count = 0
+    successful_trades = 0
+    for t in range(len(pred_rets)):
+        if pred_rets[t] > buy_threshold:
+            trade_count += 1
+            if true_rets[t] > fee_rate:
+                successful_trades += 1            
+            balance *= 1.0 + (true_rets[t] - fee_rate)
+    return balance - 1.0, trade_count, successful_trades # accumulated_return
+
+# ac_ret, trade_count, successful_trades = simulate_trading(true_rets, pred_rets, buy_threshold=0.02, fee_rate=0.01)
+# print(ac_ret, trade_count, successful_trades)

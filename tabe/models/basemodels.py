@@ -192,7 +192,7 @@ class TSLibModel(AbstractModel):
 
             adjust_learning_rate(model_optim, epoch + 1, self.configs)
 
-        logger.info(f"_train_batch_with_validation: cost time: {time.time() - time_now}")
+        logger.info(f"_train_batch_with_validation: cost time: {time.time() - time_now:.3f}sec")
 
         # load the best model found
         self.load_saved_model() 

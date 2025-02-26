@@ -212,6 +212,8 @@ def _get_parser(model_name=None):
     # Adjuster
     parser.add_argument('--max_gp_opt_steps', type=int, default=2000, 
                         help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
+    parser.add_argument('--quantile', type=float, default=0.95, 
+                        help="quantile level for the probabilistic prediction in the Adjuster [default: 0.95]")
 
     # Adaptive HPO (for Combiner, Adjuster)
     parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
@@ -368,7 +370,7 @@ def run(args=None):
     _mem_util.print_memory_usage()
 
     logger.info('Testing ==================================')
-    y, y_hat, y_hat_cbm, y_hat_bsm = adjusterModel.test()
+    y, y_hat, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high = adjusterModel.test()
     _mem_util.print_memory_usage()
 
     result_dir = "./result/" + get_config_str(configs)
@@ -376,9 +378,8 @@ def run(args=None):
         os.makedirs(result_dir)
 
     report.report_losses(y, y_hat, y_hat_cbm, y_hat_bsm, filepath = result_dir + "/models_losses.txt")
-    report.plot_forecast_result(y, y_hat, y_hat_cbm, y_hat_bsm, basemodels, 
+    report.plot_forecast_result(y, y_hat,  y_hat_q_low, y_hat_q_high, y_hat_cbm, y_hat_bsm, basemodels,
                         filepath = result_dir + "/models_forecast_comparison.pdf")
-    report.plot_gpmodel(adjusterModel.gpm, filepath=result_dir + "/gpmodel_analysis.pdf")
 
     _cleanup_gpu_cache(configs)
     _mem_util.stop_python_memory_tracking()

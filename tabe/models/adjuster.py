@@ -7,6 +7,7 @@ import time
 import numpy as np
 import torch
 
+from scipy.stats import norm
 
 import pyro
 import pyro.contrib.gp as gp
@@ -105,9 +106,9 @@ class AdjusterModel(AbstractModel):
         last_deviation = gpm.y[-1:] 
         with torch.no_grad():
             exp_deviation, cov = gpm(last_deviation, full_cov=True, noiseless=False)
-        # sd = cov.diag().sqrt()  
+        sd = cov.diag().sqrt()  
         # print(f"Adjuster.proceed_onestep(): exp_dev={exp_deviation.item():.6f}, sd_dev={sd.item():.6f}")
-        return exp_deviation
+        return exp_deviation, sd
 
 
     def _optimize_HP(self, use_BOA=False, max_evals=10):
@@ -125,7 +126,7 @@ class AdjusterModel(AbstractModel):
                     gpm = self._train_new_gpmodel(hp_dict, torch.Tensor(deviations[:t]))
                 else:
                     gpm = self._forward_onestep(hp_dict, gpm, torch.tensor([deviations[t]]))
-                exp_deviation = self._predict_next(gpm)
+                exp_deviation, _ = self._predict_next(gpm)
                 next_y_hat = self.y_hat_cbm[t] + exp_deviation
                 next_y = self.truths[t]
                 losses.append(np.abs(next_y_hat - next_y))
@@ -189,7 +190,7 @@ class AdjusterModel(AbstractModel):
         assert batch_x.shape[0]==1 and batch_y.shape[0]==1
 
         # estimate the next deviation with the last deviation 
-        pred_deviation = self._predict_next(self.gpm)
+        pred_deviation, devi_stddev = self._predict_next(self.gpm)
 
         # get combiner model's predition
         y_hat_cbm, y_hat_bsm = self.combiner_model.proceed_onestep(
@@ -197,6 +198,9 @@ class AdjusterModel(AbstractModel):
 
         # adjust combinerModel's prediction by adding expected deviation 
         y_hat = y_hat_cbm + pred_deviation
+        z_val = norm.ppf(self.configs.quantile)  # assuming Gaussian distribution
+        y_hat_quantile_low = y_hat - devi_stddev * z_val
+        y_hat_quantile_high = y_hat + devi_stddev * z_val
 
         # calculate the actuall loss of next timestep
         y = batch_y[0, -1, -1] 
@@ -217,7 +221,7 @@ class AdjusterModel(AbstractModel):
                 self.hp_dict, _ = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
                 self.hpo_counter = 0                
 
-        return y_hat, y_hat_cbm, y_hat_bsm
+        return y_hat, y_hat_cbm, y_hat_bsm, y_hat_quantile_low, y_hat_quantile_high
 
 
     def test(self):
@@ -228,28 +232,36 @@ class AdjusterModel(AbstractModel):
         y_hat = np.empty_like(y)
         y_hat_cbm = np.empty_like(y)
         y_hat_bsm = np.empty((len(self.combiner_model.basemodels), len(y)))
-
-        criterion = self._select_criterion()
+        y_hat_q_low = np.empty_like(y)
+        y_hat_q_high = np.empty_like(y)
 
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
-            y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t] = \
-                self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training=True)            
+            y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t], y_hat_q_low[t], y_hat_q_high[t] = \
+                self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, self._select_criterion(), training=True)            
             _mem_util.print_memory_usage()
+
+        report.plot_gpmodel(self.gpm, filepath=self._get_result_path()+"/gpmodel_analysis.pdf")
 
         if need_to_invert_data:
             n_features = test_set.data_y.shape[1]
             data_y = np.zeros((len(y), n_features))
             data_y_hat = np.zeros((len(y), n_features))
+            data_y_hat_q_low = np.zeros((len(y), n_features))
+            data_y_hat_q_high = np.zeros((len(y), n_features))
             data_y_hat_cbm = np.zeros((len(y), n_features))
             data_y[:, -1] = y
             data_y_hat[:, -1] = y_hat
+            data_y_hat_q_low[:, -1] = y_hat_q_low
+            data_y_hat_q_high[:, -1] = y_hat_q_high
             data_y_hat_cbm[:, -1] = y_hat_cbm
             y = test_set.inverse_transform(data_y)[:, -1]
             y_hat = test_set.inverse_transform(data_y_hat)[:, -1]
+            y_hat_q_low = test_set.inverse_transform(data_y_hat_q_low)[:, -1]
+            y_hat_q_high = test_set.inverse_transform(data_y_hat_q_high)[:, -1]
             y_hat_cbm = test_set.inverse_transform(data_y_hat_cbm)[:, -1]
             for i in range(len(y_hat_bsm)):
                 data_y_hat_bsm = np.zeros((len(y), n_features))
                 data_y_hat_bsm[:, -1] = y_hat_bsm[i]
                 y_hat_bsm[i] = test_set.inverse_transform(data_y_hat_bsm)[:, -1]
 
-        return y, y_hat, y_hat_cbm, y_hat_bsm
+        return y, y_hat, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high

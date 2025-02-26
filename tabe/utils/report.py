@@ -43,13 +43,20 @@ def plot_forecast(y, y_hat, title=None, filepath=None):
         plt.savefig(filepath, bbox_inches='tight')
 
 
-def plot_forecast_result(truth, adjuster_pred, combiner_pred, base_preds, basemodels, filepath=None):
+def plot_forecast_result(truth, adjuster_pred,  adj_pred_q_low, adj_pred_q_high, combiner_pred, base_preds, basemodels, filepath=None):
     plt.figure(figsize=(12, 6))
     plt.title('Forecast Comparison')     
     plt.ylabel('Target (BTC return in 25 days)')     
     plt.xlabel('Test Duration (Days)')
     plt.plot(truth, label='GroundTruth', linewidth=2, color='black')
     plt.plot(adjuster_pred, label="Adjuster Model", linewidth=2, color='red')
+    plt.fill_between(
+        np.linspace(0, len(truth)-1, len(truth)), 
+        adj_pred_q_low, adj_pred_q_high,
+        color='red', alpha=0.1,
+        label="area in quantiles"
+    )        
+
     plt.plot(combiner_pred, label="Combiner Model", linewidth=2, color='blue')
     for i, basemodel in enumerate(basemodels):
         plt.plot(base_preds[i], label=f"Base Model [{basemodel.name}]", linewidth=1)

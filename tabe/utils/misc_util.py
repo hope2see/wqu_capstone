@@ -6,21 +6,26 @@ import torch
 import sys
 import typing
 import time 
+from datetime import datetime
 
+_datatime_sig = datetime.now().strftime("%Y_%m_%d_%H%M%S")
 
 # logging -----------------------------------------------------
 
 _DEFAULT_LOGGER = "tabe_logger"
 
 _DEFAULT_FORMATTER = logging.Formatter(
-    '%(asctime)s - %(filename)s[pid:%(process)d;line:%(lineno)d:%(funcName)s] - %(levelname)s: %(message)s'
+    '%(asctime)s - %(filename)s[%(funcName)s] - %(levelname)s: %(message)s'
 )
+# _DEFAULT_FORMATTER = logging.Formatter(
+#     '%(asctime)s - %(filename)s[pid:%(process)d;line:%(lineno)d:%(funcName)s] - %(levelname)s: %(message)s'
+# )
 
 _h_stdout = logging.StreamHandler(stream=sys.stdout)
 _h_stdout.setFormatter(_DEFAULT_FORMATTER)
 _h_stdout.setLevel(logging.DEBUG)
 
-_h_file = logging.FileHandler(f'tabe_log_{time.time()}.log', mode='w')  
+_h_file = logging.FileHandler(f'tabe_log_{_datatime_sig}.log', mode='w')  
 _h_file.setFormatter(_DEFAULT_FORMATTER)
 _h_file.setLevel(logging.INFO)
 
@@ -28,7 +33,7 @@ _DEFAULT_HANDLERS = [_h_stdout, _h_file]
 
 _LOGGER_CACHE = {}  # type: typing.Dict[str, logging.Logger]
 
-def get_logger(name, level="DEBUG", handlers=None, update=False):
+def get_logger(name, level="DEBUG", handlers=None, update=False, verbose=False):
     if name in _LOGGER_CACHE and not update:
         return _LOGGER_CACHE[name]
     logger = logging.getLogger(name)
@@ -40,14 +45,17 @@ def get_logger(name, level="DEBUG", handlers=None, update=False):
 logger = get_logger(_DEFAULT_LOGGER)
 
 
+#  -----------------------------------------------------
 
 def get_config_str(configs):
-    setting_str = f"{configs.model_id}_{configs.model_id}_{configs.data}_sl{configs.seq_len}"
+    setting_str =  f"{configs.des}_{configs.model_id}_sl{configs.seq_len}"
     setting_str += f"_ahpo_{configs.hpo_interval}" if configs.adaptive_hpo else "_ahpo_no"
-    setting_str += f"_ep{configs.train_epochs}_"
-    setting_str += configs.des
+    setting_str += f"_ep{configs.train_epochs}_" + configs.data_path + "_"
+    setting_str += _datatime_sig
     return setting_str
 
+
+#  -----------------------------------------------------
 
 class EarlyStopping:
     def __init__(self, patience=7, verbose=False, delta=0):
@@ -88,3 +96,7 @@ class EarlyStopping:
         self.early_stop = False
         self.counter = 0
 
+#  -----------------------------------------------------
+
+
+# def simulate_trading(pred):

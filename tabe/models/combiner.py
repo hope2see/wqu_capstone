@@ -215,8 +215,9 @@ class CombinerModel(AbstractModel):
         self.truths = train_dataset.data_y[-hpo_peroid:, -1]
         hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
 
-        report.plot_hpo_result(hp_boa, trials_boa, "Bayesian Optimization for HPO",
-                              self._get_result_path()+"/hpo_result.pdf")
+        report.plot_hpo_result(hp_boa, trials_boa, "HyperParameter Optimization for Combiner",
+                            self._get_result_path()+"/hpo_result.pdf")
+    
         self.hp_dict = hp_boa
         
 

@@ -50,7 +50,7 @@ logger = get_logger(_DEFAULT_LOGGER)
 def get_config_str(configs):
     setting_str =  f"{configs.des}_{configs.model_id}_sl{configs.seq_len}"
     setting_str += f"_ahpo_{configs.hpo_interval}" if configs.adaptive_hpo else "_ahpo_no"
-    setting_str += f"_ep{configs.train_epochs}_" + configs.data_path + "_"
+    setting_str += f"_ep{configs.train_epochs}_" 
     setting_str += _datatime_sig
     return setting_str
 

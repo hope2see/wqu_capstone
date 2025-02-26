@@ -214,6 +214,9 @@ def _get_parser(model_name=None):
                         help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
     parser.add_argument('--quantile', type=float, default=0.95, 
                         help="quantile level for the probabilistic prediction in the Adjuster [default: 0.95]")
+    parser.add_argument('--gpm_lookback_win', type=int, default=25, 
+                        help="lookback window size for evaluating gaussian process model in the Adjuster [10 ~ 50]"
+                            "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
 
     # Adaptive HPO (for Combiner, Adjuster)
     parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")

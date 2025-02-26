@@ -17,6 +17,7 @@ from hyperopt import hp, tpe, rand, fmin, Trials, STATUS_OK
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 from tabe.utils.mem_util import MemUtil
+from tabe.utils.misc_util import logger
 import tabe.utils.report as report
 
 
@@ -35,8 +36,7 @@ _mem_util = MemUtil(rss_mem=False, python_mem=False)
 class AdjusterModel(AbstractModel):
     # Maximum lookback-window size for fitting gaussian process model
     MIN_LOOKBACK_WIN = 10
-    MAX_LOOKBACK_WIN = 40
-    DEFAULT_LOOKBACK_WIN = 25
+    MAX_LOOKBACK_WIN = 50
 
     # Period for HPO (HyperParameter Optimization)
     # The most recent period of this length is used for HPO. 
@@ -45,7 +45,7 @@ class AdjusterModel(AbstractModel):
     # the latest input should be used (or added) for HPO. 
     # And, ever-growing input size is not practically acceptable. 
     # Thus, we use fixed-size evaluation period for HPO.
-    MAX_HPO_EVAL_PEROID = MAX_LOOKBACK_WIN * 4
+    MAX_EVAL_PEROID = MAX_LOOKBACK_WIN * 4
 
 
     def __init__(self, configs, combiner_model, gpm_kernel=None):
@@ -61,7 +61,6 @@ class AdjusterModel(AbstractModel):
         self.hp_space = {
             'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 2),
         }
-        # self.hp_dict = {'lookback_window_size':self.DEFAULT_LOOKBACK_WIN}   # currently active hyper-parameters
         self.hp_dict = None   # currently active hyper-parameters
         self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
         self.y_hat_cbm = None # the last predictions of combiner. shape = (HPO_EVALUATION_PEROID)
@@ -116,7 +115,7 @@ class AdjusterModel(AbstractModel):
         # Objective function (loss function) for hyper-parameter optimization
         # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
         def _evaluate_hp(hp_dict):
-            deviations = self.truths - self.y_hat_cbm
+            deviations = (self.truths - self.y_hat_cbm)[:-1] # exclude the last one, becuause it is the target to predict
             assert len(self.truths) > self.MAX_LOOKBACK_WIN
             t = self.MAX_LOOKBACK_WIN # We should start from the same timestep to evaluate the same period.
             gpm = None            
@@ -148,7 +147,7 @@ class AdjusterModel(AbstractModel):
                        trials=trials, rstate=np.random.default_rng(1), verbose=True)
 
         spent_time = (time.time() - time_now) 
-        print(f'Adjuster._optimize_HP() : {spent_time:.4f} sec elapsed')
+        logger.info(f'Adjuster._optimize_HP() : {spent_time:.4f} sec elapsed')
 
         return best_hp, trials
 
@@ -170,20 +169,23 @@ class AdjusterModel(AbstractModel):
             y_hat_cbm[t] = y_hat_t
             _mem_util.print_memory_usage()
 
-        # Hyperparameter Optimization -------------------------------------
-        hpo_peroid = min(self.MAX_HPO_EVAL_PEROID, len(train_loader))
-        self.y_hat_cbm = y_hat_cbm[-hpo_peroid:]
-        self.truths = y[-hpo_peroid:]
-        hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
-        report.plot_hpo_result(hp_boa, trials_boa, "Bayesian Optimization for HPO",
-                              self._get_result_path()+"/hpo_result.pdf")
-        self.hp_dict = hp_boa
+        eval_peroid = min(self.MAX_EVAL_PEROID, len(train_loader)-1)
+        self.y_hat_cbm = y_hat_cbm[-eval_peroid:]
+        self.truths = y[-eval_peroid:]
+        if self.configs.adaptive_hpo:
+            hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
+            report.plot_hpo_result(hp_boa, trials_boa, "HyperParameter Optimization for Adjuster",
+                                self._get_result_path()+"/hpo_result.pdf")
+            self.hp_dict = hp_boa
+            logger.info(f"Adjuster HPO : lookback_window_size = {hp_boa['lookback_window_size']}")
+        else:
+            self.hp_dict = {'lookback_window_size':self.configs.gpm_lookback_win}
 
         # Gaussian Process model is to used to predict next deviation from past predctions
-        deviations = self.truths - self.y_hat_cbm
+        # We exclude the last deviation for training, becuause that is the actual target. 
+        deviations = (self.truths - self.y_hat_cbm)[:-1]
         self.gpm = self._train_new_gpmodel(self.hp_dict, torch.Tensor(deviations))
 
-        print(f"Adjuster Best HP: lookback_window_size = {hp_boa['lookback_window_size']}")
 
 
     def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training: bool = False):
@@ -213,9 +215,9 @@ class AdjusterModel(AbstractModel):
         if self.configs.adaptive_hpo:
             self.y_hat_cbm = np.concatenate((self.y_hat_cbm, np.array([y_hat_cbm])))
             self.truths = np.concatenate((self.truths, np.array([y])))
-            if len(self.y_hat_cbm) > self.MAX_HPO_EVAL_PEROID: 
-                self.y_hat_cbm = self.y_hat_cbm[:, -self.MAX_HPO_EVAL_PEROID:]
-                self.truths = self.truths[:, -self.MAX_HPO_EVAL_PEROID:]
+            if len(self.y_hat_cbm) > self.MAX_EVAL_PEROID: 
+                self.y_hat_cbm = self.y_hat_cbm[:, -self.MAX_EVAL_PEROID:]
+                self.truths = self.truths[:, -self.MAX_EVAL_PEROID:]
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
                 self.hp_dict, _ = self._optimize_HP(max_evals=self.configs.max_hpo_eval)

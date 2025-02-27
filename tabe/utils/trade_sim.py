@@ -40,11 +40,11 @@ def _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_th
                 holding = True
         else: 
             # If today's return or tomorrow's predicted return is below the sell_threshold, then sell
-            if true_rets[t-1] < sell_threshold or pred_rets[t] < sell_threshold: # sell
+            if (true_rets[t-1] < sell_threshold) or (pred_rets[t] < sell_threshold): # sell
                 balance += balance * true_rets[t-1]
                 balance -= balance * fee_rate
                 profit_rate = (balance - orig_balance) / orig_balance
-                trade_stats.append([t+1, balance, profit_rate])
+                trade_stats.append([t, balance, profit_rate])
                 holding = False
             else:
                 balance += balance * true_rets[t-1]
@@ -53,7 +53,7 @@ def _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_th
         balance += balance * true_rets[t]
         balance -= balance * fee_rate
         profit_rate = (balance - orig_balance) / orig_balance
-        trade_stats.append([t+1, balance, profit_rate])
+        trade_stats.append([t, balance, profit_rate])
 
     return balance - 1.0, trade_stats
 

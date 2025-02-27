@@ -58,11 +58,13 @@ class Dataset_TABE(Dataset):
         cols.remove(self.target)
         cols.remove('date')
         df_raw = df_raw[['date'] + cols + [self.target]]
-        num_vali = int(len(df_raw) * 0.2) #len(df_raw) - num_base_train - num_test
-        assert num_vali > self.seq_len, f"num_vali({num_vali}) should be larger than seq_len({self.seq_len})"
+        num_vali = int(len(df_raw) * 0.15) #len(df_raw) - num_base_train - num_test
+        assert num_vali > 20+self.seq_len, f"num_vali({num_vali}) should be larger than 20+seq_len({self.seq_len})"
         num_base_train = int(len(df_raw) * 0.5)
-        num_ensemble_train = int(len(df_raw) * 0.2)
+        num_ensemble_train = int(len(df_raw) * 0.15)
         num_test = len(df_raw) - num_vali - num_base_train - num_ensemble_train
+
+        logger.info(f"Dataset Period : [Val {num_vali} | Base Train {num_base_train} | Ensemble Train {num_ensemble_train} | Test {num_test}")
 
         border1s = [0, num_vali - self.seq_len, num_vali + num_base_train - self.seq_len, len(df_raw) - num_test - self.seq_len]
         border2s = [num_vali, num_vali + num_base_train, num_vali + num_base_train + num_ensemble_train, len(df_raw)]
@@ -158,7 +160,6 @@ def _data_provider(args, flag, step_by_step=False):
             win_size=args.seq_len,
             flag=flag,
         )
-        logger.info(flag, len(data_set))
         data_loader = DataLoader(
             data_set,
             batch_size=batch_size,

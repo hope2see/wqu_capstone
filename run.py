@@ -331,8 +331,12 @@ def run(args=None):
 
     set_experiment_sig(configs)
 
+    result_dir = "./result/" + experiment_sig()
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+
     # add file logging
-    h_file = logging.FileHandler(experiment_sig()+'.log', mode='w')  
+    h_file = logging.FileHandler(result_dir+'/tabe.log', mode='w')  
     h_file.setFormatter(default_formatter)
     h_file.setLevel(logging.DEBUG)
     logger.addHandler(h_file)
@@ -389,10 +393,6 @@ def run(args=None):
     _mem_util.print_memory_usage()
 
     # result reporting -----------------
-
-    result_dir = "./result/" + experiment_sig()
-    if not os.path.exists(result_dir):
-        os.makedirs(result_dir)
 
     report.report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath = result_dir + "/models_losses.txt")
     report.plot_forecast_result(y, y_hat_adj,  y_hat_q_low, y_hat_q_high, y_hat_cbm, y_hat_bsm, basemodels,

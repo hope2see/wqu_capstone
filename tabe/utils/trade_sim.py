@@ -9,7 +9,7 @@ def _simulate_trading_buy_and_hold(true_rets, fee_rate):
         balance += balance * true_rets[t]
     balance -= balance * fee_rate # sell at the last day 
     profit_rate = balance - 1.0
-    trade_stats = [[len(true_rets)-1, balance, profit_rate]]
+    trade_stats.append([t+1, balance, profit_rate]) 
     return balance - 1.0, trade_stats
 
 
@@ -23,7 +23,7 @@ def _simulate_trading_daily_buy_sell(true_rets, pred_rets, buy_threshold, fee_ra
             balance += balance * true_rets[t]
             balance -= balance * fee_rate # sell
             profit_rate = (balance - orig_balance) / orig_balance
-            trade_stats.append([t, balance, profit_rate]) 
+            trade_stats.append([t+1, balance, profit_rate]) 
     return balance - 1.0, trade_stats
 
 
@@ -40,16 +40,21 @@ def _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_th
                 balance += balance * true_rets[t]
                 holding = True
         else: 
-            if (pred_rets[t] < sell_threshold) or (t == len(pred_rets)-1): # sell
+            if pred_rets[t] < sell_threshold: # sell
                 balance += balance * true_rets[t]
                 balance -= balance * fee_rate
                 profit_rate = (balance - orig_balance) / orig_balance
-                trade_stats.append([t, balance, profit_rate])
+                trade_stats.append([t+1, balance, profit_rate])
                 holding = False
             else:
                 balance += balance * true_rets[t]
 
-    assert holding == False
+    if holding: # sell at the last day
+        balance += balance * true_rets[t]
+        balance -= balance * fee_rate
+        profit_rate = (balance - orig_balance) / orig_balance
+        trade_stats.append([t+1, balance, profit_rate])
+
     return balance - 1.0, trade_stats
 
 

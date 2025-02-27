@@ -22,7 +22,7 @@ from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 import tabe.utils.report as report
 from tabe.utils.mem_util import MemUtil
-from tabe.utils.misc_util import logger
+from tabe.utils.logger import logger
 
 
 warnings.filterwarnings('ignore')

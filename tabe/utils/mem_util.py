@@ -1,7 +1,8 @@
 import os
 import psutil
 import tracemalloc
-from tabe.utils.misc_util import logger
+from tabe.utils.logger import logger
+
 
 class MemUtil(object):
     _tracemalloc_started = False 

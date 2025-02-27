@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 import random
 import torch
+import logging
 
 # Time-Series-Library
 from utils.print_args import print_args
@@ -25,10 +26,11 @@ from tabe.models.basemodels import StatisticalModel, EtsModel, SarimaModel, TSLi
 from tabe.models.timemoe import TimeMoE
 from tabe.models.combiner import CombinerModel
 from tabe.models.adjuster import AdjusterModel
-from tabe.utils.misc_util import get_config_str
 from tabe.utils.mem_util import MemUtil
 import tabe.utils.report as report
-from tabe.utils.misc_util import logger, simulate_trading
+from tabe.utils.misc_util import set_experiment_sig, experiment_sig
+from tabe.utils.logger import logger, default_formatter
+from tabe.utils.trade_sim import simulate_trading
 
 
 _mem_util = MemUtil(rss_mem=True, python_mem=True)
@@ -323,12 +325,21 @@ def _cleanup_gpu_cache(configs):
 def run(args=None):
     _set_seed()
 
-    _mem_util.start_python_memory_tracking()
-    _mem_util.print_memory_usage()
-
     configs = _get_parser().parse_args(args)
     _set_device_configs(configs)
     print_args(configs)
+
+    set_experiment_sig(configs)
+
+    # add file logging
+    h_file = logging.FileHandler(experiment_sig()+'.log', mode='w')  
+    h_file.setFormatter(default_formatter)
+    h_file.setLevel(logging.DEBUG)
+    logger.addHandler(h_file)
+
+    # start memory tracking 
+    _mem_util.start_python_memory_tracking()
+    _mem_util.print_memory_usage()
 
     device = _acquire_device(configs)
 
@@ -379,7 +390,7 @@ def run(args=None):
 
     # result reporting -----------------
 
-    result_dir = "./result/" + get_config_str(configs)
+    result_dir = "./result/" + experiment_sig()
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
 
@@ -388,19 +399,19 @@ def run(args=None):
                         filepath = result_dir + "/models_forecast_comparison.pdf")
 
     # Trading Simulations
-    df_sim_result = pd.DataFrame()
-    ac, tc, stc = simulate_trading(y, y_hat_adj)
-    df_sim_result['Adjuster'] = [ac, tc, stc]
-    ac, tc, stc = simulate_trading(y, y_hat_q_low, buy_threshold=0.001)
-    df_sim_result['Adjuster_p'] = [ac, tc, stc]
-    ac, tc, stc = simulate_trading(y, y_hat_cbm)
-    df_sim_result['Combiner'] = [ac, tc, stc]
-    for i, bm in enumerate(basemodels):
-        ac, tc, stc = simulate_trading(y, y_hat_bsm[i])
-        df_sim_result[bm.name] = [ac, tc, stc]
-    df_sim_result.index = ['Acc. Ret', '# Trades', '# Win_Trades']
-    report.report_trading_simulation(df_sim_result, filepath = result_dir + "/trading_simulation.txt")
+    for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell']:
+        df_sim_result = pd.DataFrame() 
+        df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy=strategy)
+        df_sim_result['Adjuster_p'] = simulate_trading(y, y_hat_q_low, strategy=strategy)
+        df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy=strategy)
+        for i, bm in enumerate(basemodels):
+            df_sim_result[bm.name] = simulate_trading(y, y_hat_bsm[i], strategy=strategy)
+        df_sim_result.index = ['Acc. ROI', 'Mean ROI', '# Trades', '# Win_Trades']
+        report.report_trading_simulation(df_sim_result, strategy, len(y), 
+                                         filepath = result_dir + "/trading_simulation_" + strategy + ".txt")
 
+
+    # clean up 
     _cleanup_gpu_cache(configs)
     _mem_util.stop_python_memory_tracking()
 

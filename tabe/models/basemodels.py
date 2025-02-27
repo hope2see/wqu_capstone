@@ -16,7 +16,8 @@ from utils.metrics import metric
 from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
-from tabe.utils.misc_util import EarlyStopping, logger
+from tabe.utils.logger import logger
+from tabe.utils.misc_util import EarlyStopping
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 

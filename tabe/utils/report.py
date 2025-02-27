@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import torch
 import pyro.contrib.gp as gp
 from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
-from tabe.utils.misc_util import logger
+from tabe.utils.logger import logger
 
 
 def plot_hpo_result(HP, trials, title, filepath=None):
@@ -176,8 +176,12 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     return losses_adj, losses_cbm, losses_bsm
 
 
-def report_trading_simulation(df_sim_result, filepath=None):
+def report_trading_simulation(df_sim_result, strategy, days, filepath=None):
     buffer = io.StringIO()
-    print("\nTrading Simulation Results:", file=buffer)
-    print(df_sim_result, file=buffer)
+    print(f"\n[ Trading Simulation Results: (Strategy:{strategy}, Days:{days} ]", file=buffer)
+    print(df_sim_result.to_string(), file=buffer)
     logger.info(buffer.getvalue())
+    if filepath is not None:
+        f = open(filepath, 'w')
+        f.write(buffer.getvalue())
+        f.close()

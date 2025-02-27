@@ -1,58 +1,21 @@
 
-import os 
-import logging
 import numpy as np
 import torch
-import sys
-import typing
 import time 
 from datetime import datetime
-
-_datatime_sig = datetime.now().strftime("%Y_%m_%d_%H%M%S")
-
-# logging -----------------------------------------------------
-
-_DEFAULT_LOGGER = "tabe_logger"
-
-_DEFAULT_FORMATTER = logging.Formatter(
-    '%(asctime)s - %(filename)s[%(funcName)s] - %(levelname)s: %(message)s'
-)
-# _DEFAULT_FORMATTER = logging.Formatter(
-#     '%(asctime)s - %(filename)s[pid:%(process)d;line:%(lineno)d:%(funcName)s] - %(levelname)s: %(message)s'
-# )
-
-_h_stdout = logging.StreamHandler(stream=sys.stdout)
-_h_stdout.setFormatter(_DEFAULT_FORMATTER)
-_h_stdout.setLevel(logging.DEBUG)
-
-_h_file = logging.FileHandler(f'tabe_log_{_datatime_sig}.log', mode='w')  
-_h_file.setFormatter(_DEFAULT_FORMATTER)
-_h_file.setLevel(logging.INFO)
-
-_DEFAULT_HANDLERS = [_h_stdout, _h_file]
-
-_LOGGER_CACHE = {}  # type: typing.Dict[str, logging.Logger]
-
-def get_logger(name, level="DEBUG", handlers=None, update=False, verbose=False):
-    if name in _LOGGER_CACHE and not update:
-        return _LOGGER_CACHE[name]
-    logger = logging.getLogger(name)
-    logger.setLevel(level)
-    logger.handlers = handlers or _DEFAULT_HANDLERS
-    logger.propagate = False
-    return logger
-
-logger = get_logger(_DEFAULT_LOGGER)
+from tabe.utils.logger import logger
 
 
-#  -----------------------------------------------------
+_experiment_signature = None
+def set_experiment_sig(configs):
+    global _experiment_signature
+    _experiment_signature =  f"{configs.des}_{configs.model_id}_sl{configs.seq_len}"
+    _experiment_signature += f"_ep{configs.train_epochs}_" 
+    _experiment_signature += datetime.now().strftime("%Y%m%d_%H%M%S")
 
-def get_config_str(configs):
-    setting_str =  f"{configs.des}_{configs.model_id}_sl{configs.seq_len}"
-    setting_str += f"_ahpo_{configs.hpo_interval}" if configs.adaptive_hpo else "_ahpo_no"
-    setting_str += f"_ep{configs.train_epochs}_" 
-    setting_str += _datatime_sig
-    return setting_str
+def experiment_sig():
+    assert _experiment_signature is not None
+    return _experiment_signature
 
 
 #  -----------------------------------------------------
@@ -95,23 +58,3 @@ class EarlyStopping:
     def reset(self):
         self.early_stop = False
         self.counter = 0
-
-
-# -----------------------------------------------------
-# Trading Simulation
-
-def simulate_trading(true_rets, pred_rets, buy_threshold=0.005, fee_rate=0.001):
-    assert len(true_rets) == len(pred_rets)
-    balance = 1.0
-    trade_count = 0
-    successful_trades = 0
-    for t in range(len(pred_rets)):
-        if pred_rets[t] > buy_threshold:
-            trade_count += 1
-            if true_rets[t] > fee_rate:
-                successful_trades += 1            
-            balance *= 1.0 + (true_rets[t] - fee_rate)
-    return balance - 1.0, trade_count, successful_trades # accumulated_return
-
-# ac_ret, trade_count, successful_trades = simulate_trading(true_rets, pred_rets, buy_threshold=0.02, fee_rate=0.01)
-# print(ac_ret, trade_count, successful_trades)

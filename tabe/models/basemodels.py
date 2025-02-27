@@ -66,9 +66,9 @@ class SarimaModel(StatisticalModel):
     def __init__(self, configs):
         super().__init__(configs, "SARIMA") 
 
-    def _fit(self, endog_y):
+    def _fit(self, endog):
         # NOTE: Use auto-finding of the hyperparameters for SARIMA
-        return SARIMAX(endog_y, order=(1,1,0), trend='ct', enforce_stationarity=False).fit(disp=False)
+        return SARIMAX(endog, order=(1,1,0), trend='ct', enforce_stationarity=False).fit(disp=False)
     
 
 # Written by referencing Time-Series-Library/exp_longterm_forecasting.py,exp_basic.py

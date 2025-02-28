@@ -150,45 +150,20 @@ def plot_gpmodel(gpm, plot_observed_data=True, plot_predictions=True, n_test=500
         plt.savefig(filepath, bbox_inches='tight')
 
 
-def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
-    metric_dict = {
-        "MAE": MAE, 
-        "MSE": MSE, 
-        "RMSE": RMSE, 
-        "MAPE": MAPE, 
-        "MSPE": MSPE
-    }
+def _measure_loss(p,t):
+    return MAE(p,t), MSE(p,t), RMSE(p,t), MAPE(p,t), MSPE(p,t)
 
-    losses_adj = {}
-    losses_cbm = {}
-    losses_bsm = {}
-
-    logger.info("\n--------------------------------")
-    logger.info("Losses of all models")
-    logger.info("--------------------------------")
-
-    if filepath is not None:
-        f = open(filepath, 'w')
-
-    for m in metric_dict:
-        losses_adj[m] = metric_dict[m](y_hat_adj, y)
-        losses_cbm[m] = metric_dict[m](y_hat_cbm, y)
-        losses_bsm[m] = []
-        for i in range(len(y_hat_bsm)):
-            losses_bsm[m].append(metric_dict[m](y_hat_bsm[i], y))
-        output_str = f"{m:<4}: {losses_adj[m]:.6f}, {losses_cbm[m]:.6f}, " \
-                    +  ", ".join([f"{loss:.6f}" for loss in losses_bsm[m]])
-        logger.info(output_str)
-        if filepath is not None:
-            f.write(output_str + '\n')
-
-    if filepath is not None:
-        f.close()
-
-    return losses_adj, losses_cbm, losses_bsm
+def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, basemodels):
+    df = pd.DataFrame()
+    df['Adjuster'] = _measure_loss(y_hat_adj, y)
+    df['Combiner'] = _measure_loss(y_hat_cbm, y)
+    for i, bm in enumerate(basemodels):
+        df[bm.name] = _measure_loss(y_hat_bsm[i], y)
+    df.index = ['MAE', 'MSE', 'RMSE', 'MAPE', 'MSPE']
+    print_dataframe(df, 'Model Losses')
 
 
-def _measure_classifier_performance(truths, predictions, classification_method='up_down', threshold=0.02):
+def _measure_classifier_performance(truths, predictions, classification_method='up_down', threshold=0.002):
     if classification_method == 'up_down': # (1,0)
         true_labels = (truths > 0.0).astype(int) 
         pred_labels = (predictions > 0.0).astype(int) 

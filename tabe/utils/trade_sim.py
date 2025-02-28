@@ -82,4 +82,5 @@ def simulate_trading(true_rets, pred_rets, strategy='daily_buy_sell', buy_thresh
     trade_stats = np.array(trade_stats)
     num_of_successful_trades = np.count_nonzero(trade_stats[:, 2] > 0) if num_of_trades > 0 else 0
     mean_profit_rate = np.mean(trade_stats[:, 2]) if num_of_trades > 0 else 0.0
-    return accumulated_ret, mean_profit_rate, num_of_trades, num_of_successful_trades
+    successful_trade_rate = float(num_of_successful_trades) / num_of_trades  if num_of_trades > 0 else 0.0
+    return accumulated_ret, mean_profit_rate, num_of_trades, num_of_successful_trades, successful_trade_rate

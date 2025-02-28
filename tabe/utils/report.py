@@ -5,8 +5,26 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import torch
 import pyro.contrib.gp as gp
+from sklearn.metrics import precision_score, recall_score, f1_score, roc_auc_score, roc_curve
 from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
 from tabe.utils.logger import logger
+
+
+
+def print_dataframe(df, title, print_index=True, filepath=None):
+    buffer = io.StringIO()
+    print('\n'+title, file=buffer)
+    print(df.to_string(index=print_index), file=buffer)
+    print(buffer.getvalue())
+    logger.info(buffer.getvalue())
+    if filepath is not None:
+        f = open(filepath, 'w')
+        f.write(buffer.getvalue())
+        f.close()
+
+def print_dict(dt, title):
+    df = pd.DataFrame(dt,index=[0])
+    print_dataframe(df, title, print_index=False)
 
 
 # Plot the optimization progress (loss and loss variance) 
@@ -170,22 +188,35 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     return losses_adj, losses_cbm, losses_bsm
 
 
-def print_dataframe(df, title, print_index=True, filepath=None):
-    buffer = io.StringIO()
-    print('\n'+title, file=buffer)
-    print(df.to_string(index=print_index), file=buffer)
-    print(buffer.getvalue())
-    logger.info(buffer.getvalue())
-    if filepath is not None:
-        f = open(filepath, 'w')
-        f.write(buffer.getvalue())
-        f.close()
+def _measure_classifier_performance(truths, predictions, classification_method='up_down', threshold=0.02):
+    if classification_method == 'up_down': # (1,0)
+        true_labels = (truths > 0.0).astype(int) 
+        pred_labels = (predictions > 0.0).astype(int) 
+    else: # 'up_down_sideway' (1, -1, 0)
+        true_labels = np.zeros_like(truths, dtype=int)
+        true_labels[truths > threshold] = 1
+        true_labels[truths < -threshold] = -1
+        pred_labels = np.zeros_like(predictions, dtype=int)
+        pred_labels[predictions > threshold] = 1
+        pred_labels[predictions < -threshold] = -1
+    precision = precision_score(true_labels, pred_labels)
+    recall = recall_score(true_labels, pred_labels)
+    f1 = f1_score(true_labels, pred_labels)
+    auc = roc_auc_score(true_labels, predictions)
+    return precision, recall, f1, auc
 
-def print_dict(dt, title):
-    df = pd.DataFrame(dt,index=[0])
-    print_dataframe(df, title, print_index=False)
+
+def report_classifier_performance(y, y_hat_adj, y_hat_cbm, y_hat_bsm, basemodels, filepath=None):
+    for cl_method in ['up_down', 'up_down_sideway']:
+        df = pd.DataFrame() 
+        df['Adjuster'] = _measure_classifier_performance(y, y_hat_adj, cl_method)
+        df['Combiner'] = _measure_classifier_performance(y, y_hat_cbm, cl_method)
+        for i, bm in enumerate(basemodels):
+            df[bm.name] = _measure_classifier_performance(y, y_hat_bsm[i], cl_method)
+        df.index = ['Precision', 'Recall', 'F1', 'AUC']
+    print_dataframe(df, 'Classifier Performance', filepath=filepath)
 
 
-def report_trading_simulation(df_sim_result, strategy, days, filepath=None):
-    title = f"\n[ Trading Simulation Results: (Strategy:{strategy}, Days:{days} ]"
-    print_dataframe(df_sim_result, title, print_index=False, filepath=filepath)
+def report_trading_simulation(df, strategy, days, filepath=None):
+    title = f"[ Trading Simulation Results: (Strategy:{strategy}, Days:{days} ]"
+    print_dataframe(df, title, filepath=filepath)

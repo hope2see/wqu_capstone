@@ -399,9 +399,12 @@ def run(args=None):
 
     # result reporting -----------------
 
-    report.report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath = result_dir + "/models_losses.txt")
+    report.report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm)
+
     report.plot_forecast_result(y, y_hat_adj,  y_hat_q_low, y_hat_q_high, y_hat_cbm, y_hat_bsm, basemodels,
                         filepath = result_dir + "/models_forecast_comparison.pdf")
+
+    report.report_classifier_performance(y, y_hat_adj, y_hat_cbm, y_hat_bsm, basemodels)
 
     # Trading Simulations ---------------
 
@@ -426,9 +429,8 @@ def run(args=None):
             df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy=strategy)
             for i, bm in enumerate(basemodels):
                 df_sim_result[bm.name] = simulate_trading(y, y_hat_bsm[i], strategy=strategy)
-            df_sim_result.index = ['Acc. ROI', 'Mean ROI', '# Trades', '# Win_Trades']
-            report.report_trading_simulation(df_sim_result, strategy, len(y), 
-                                            filepath = result_dir + "/trading_simulation_" + strategy + ".txt")
+            df_sim_result.index = ['Acc. ROI', 'Mean ROI', '# Trades', '# Win_Trades', 'Winning Rate']
+            report.report_trading_simulation(df_sim_result, strategy, len(y))
     else:
         logger.info(f"Trading simulation is not performed because target_datatype is {target_datatype}.")
 

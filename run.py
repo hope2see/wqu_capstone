@@ -14,7 +14,6 @@ import torch
 import logging
 
 # Time-Series-Library
-from utils.print_args import print_args
 from models import TimesNet, DLinear, PatchTST, iTransformer, TimeXer, TSMixer
 
 # CMamba
@@ -28,7 +27,7 @@ from tabe.models.combiner import CombinerModel
 from tabe.models.adjuster import AdjusterModel
 from tabe.utils.mem_util import MemUtil
 import tabe.utils.report as report
-from tabe.utils.misc_util import set_experiment_sig, experiment_sig
+from tabe.utils.misc_util import set_experiment_sig, experiment_sig, print_configs
 from tabe.utils.logger import logger, default_formatter
 from tabe.utils.trade_sim import simulate_trading
 
@@ -64,7 +63,14 @@ def _model_args(arg_value, model_name):
 def _get_parser(model_name=None):
     parser = argparse.ArgumentParser()
 
-    if model_name is None: # global arguments, not-overidable by the model arguments
+    # If model_name is given, then all the default arguments are suppressed, and only explicitly given arguments are included
+    if model_name is not None:
+        for action in parser._actions:
+            if action.dest != 'help':
+                action.default = argparse.SUPPRESS
+
+    # global arguments, not-overidable by the model arguments
+    if model_name is None: 
 
         # basic config
         parser.add_argument('--task_name', type=str, required=True, default='long_term_forecast',
@@ -129,7 +135,19 @@ def _get_parser(model_name=None):
         parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
         parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
 
-    # global arguments, overidable by the model arguments ---------------------
+        # Combiner arguments for adding or overriding 
+        parser.add_argument('--combiner', type=lambda s: _model_args(s,'combiner'), default=None, 
+                            help="arguments for the combiner model [--option1 val1 ...]")
+
+        # Adjuster arguments for adding or overriding 
+        parser.add_argument('--adjuster', type=lambda s: _model_args(s,'adjuster'), default=None, 
+                            help="arguments for the adjuster model [--option1 val1 ...]")
+
+        # For trade simulation 
+        parser.add_argument('--target_datatype', type=str, default='Unknown',
+                            help='time features encoding, options:[Unknown, Price, Ret, LogRet]')
+
+    # Addable / Overidable by the model arguments ---------------------
 
     # optimization
     parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
@@ -138,7 +156,7 @@ def _get_parser(model_name=None):
     parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
     parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
-    parser.add_argument('--des', type=str, default='test', help='exp description')
+    parser.add_argument('--des', type=str, default='test', help='exp description') # NOTE : for what?  
     parser.add_argument('--loss', type=str, default='MSE', help='loss function')
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
@@ -212,6 +230,12 @@ def _get_parser(model_name=None):
     parser.add_argument('--basemodel', action='append', type=_basemodel_args, default=[], 
                         help="name and arguments for a base model to be inlcuded in the combiner model [name --option1 val1 ...]")
 
+    # Adaptive HPO (for Combiner, Adjuster)
+    parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
+    parser.add_argument('--hpo_interval', type=int, default=1, help="interval (timesteps >= 1) for Adaptive HPO")
+    parser.add_argument('--max_hpo_eval', type=int, default=100, 
+                        help="max number of evaluation for HPO [default: 100]")
+
     # Adjuster
     parser.add_argument('--max_gp_opt_steps', type=int, default=2000, 
                         help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
@@ -220,26 +244,6 @@ def _get_parser(model_name=None):
     parser.add_argument('--gpm_lookback_win', type=int, default=25, 
                         help="lookback window size for evaluating gaussian process model in the Adjuster [10 ~ 50]"
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
-
-    # Adaptive HPO (for Combiner, Adjuster)
-    parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
-    parser.add_argument('--hpo_interval', type=int, default=1, help="interval (timesteps >= 1) for Adaptive HPO")
-    parser.add_argument('--max_hpo_eval', type=int, default=100, 
-                        help="max number of evaluation for HPO [default: 100]")
-
-    # combiner arguments for adding to (or overriding) the common arguments
-    parser.add_argument('--combiner', type=lambda s: _model_args(s,'combiner'), default=None, 
-                        help="arguments for the combiner model [--option1 val1 ...]")
-
-    # adjuster arguments for adding to (or overriding) the common arguments
-    parser.add_argument('--adjuster', type=lambda s: _model_args(s,'adjuster'), default=None, 
-                        help="arguments for the adjuster model [--option1 val1 ...]")
-
-    # If model_name is given, then all the default arguments are suppressed, and only explicitly given arguments are included
-    if model_name is not None:
-        for action in parser._actions:
-            if action.dest != 'help':
-                action.default = argparse.SUPPRESS
 
     return parser
 
@@ -327,7 +331,6 @@ def run(args=None):
 
     configs = _get_parser().parse_args(args)
     _set_device_configs(configs)
-    print_args(configs)
 
     set_experiment_sig(configs)
 
@@ -340,6 +343,8 @@ def run(args=None):
     h_file.setFormatter(default_formatter)
     h_file.setLevel(logging.DEBUG)
     logger.addHandler(h_file)
+
+    print_configs(configs)
 
     # start memory tracking 
     _mem_util.start_python_memory_tracking()
@@ -398,18 +403,36 @@ def run(args=None):
     report.plot_forecast_result(y, y_hat_adj,  y_hat_q_low, y_hat_q_high, y_hat_cbm, y_hat_bsm, basemodels,
                         filepath = result_dir + "/models_forecast_comparison.pdf")
 
-    # Trading Simulations
-    for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell']:
-        df_sim_result = pd.DataFrame() 
-        df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy=strategy)
-        df_sim_result['Adjuster_p'] = simulate_trading(y, y_hat_q_low, strategy=strategy)
-        df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy=strategy)
-        for i, bm in enumerate(basemodels):
-            df_sim_result[bm.name] = simulate_trading(y, y_hat_bsm[i], strategy=strategy)
-        df_sim_result.index = ['Acc. ROI', 'Mean ROI', '# Trades', '# Win_Trades']
-        report.report_trading_simulation(df_sim_result, strategy, len(y), 
-                                         filepath = result_dir + "/trading_simulation_" + strategy + ".txt")
+    # Trading Simulations ---------------
 
+    # Convert data to 'Ret'
+    target_datatype = configs.target_datatype
+    if target_datatype in ['Ret', 'LogRet']:
+        if target_datatype == 'Ret':
+            pass # OK
+        elif target_datatype == 'LogRet':
+            y = np.exp(y) - 1
+            y_hat_adj = np.exp(y) - 1
+            y_hat_adj = np.exp(y_hat_adj) - 1
+            y_hat_q_low = np.exp(y_hat_q_low) - 1
+            y_hat_cbm = np.exp(y_hat_cbm) - 1
+            y_hat_q_low = np.exp(y_hat_q_low) - 1
+            for i in range(len(y_hat_bsm)):
+                y_hat_bsm[i] = np.exp(y_hat_bsm[i]) - 1
+
+        # Simulation with 'Ret'
+        for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell']:
+            df_sim_result = pd.DataFrame() 
+            df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy=strategy)
+            df_sim_result['Adjuster_p'] = simulate_trading(y, y_hat_q_low, strategy=strategy)
+            df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy=strategy)
+            for i, bm in enumerate(basemodels):
+                df_sim_result[bm.name] = simulate_trading(y, y_hat_bsm[i], strategy=strategy)
+            df_sim_result.index = ['Acc. ROI', 'Mean ROI', '# Trades', '# Win_Trades']
+            report.report_trading_simulation(df_sim_result, strategy, len(y), 
+                                            filepath = result_dir + "/trading_simulation_" + strategy + ".txt")
+    else:
+        logger.info(f"Trading simulation is not performed because target_datatype is {target_datatype}.")
 
     # clean up 
     _cleanup_gpu_cache(configs)

@@ -26,7 +26,7 @@ python -u run.py \
     --basemodel 'TimeXer' \
     --basemodel 'TimeMoE' \
     --combiner '--adaptive_hpo --hpo_interval 5 --max_hpo_eval 100' \
-    --adjuster '--gpm_lookback_win 10 --max_gp_opt_steps 2000 --quantile 0.8 \
+    --adjuster '--gpm_lookback_win 10 --max_gp_opt_steps 2000 --quantile 0.8' \
     --gpm_kernel $kernel 
 done
 

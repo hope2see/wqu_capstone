@@ -30,9 +30,6 @@ torch.set_default_tensor_type(torch.DoubleTensor)
 _mem_util = MemUtil(rss_mem=False, python_mem=False)
 
 
-# class _DefaultHP:
-#     lookback_window_size = 10
-
 class AdjusterModel(AbstractModel):
     # Maximum lookback-window size for fitting gaussian process model
     MIN_LOOKBACK_WIN = 10
@@ -48,18 +45,14 @@ class AdjusterModel(AbstractModel):
     MAX_EVAL_PEROID = MAX_LOOKBACK_WIN * 4
 
 
-    def __init__(self, configs, combiner_model, gpm_kernel=None):
+    def __init__(self, configs, combiner_model):
         super().__init__(configs, "Adjuster")
         self.combiner_model = combiner_model # must've been trained already
-        if gpm_kernel is None:
-            gpm_kernel = gp.kernels.RBF(
-                # TODO : Optimize HP 
-                input_dim=1, variance=torch.tensor(1), lengthscale=torch.tensor(1.5)
-            )
-        self.kernel = gpm_kernel 
+        self._set_gpm_kernel()
         self.gpm = None # Gaussain Process Model 
         self.hp_space = {
             'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 2),
+            'noise': hp.quniform('noise', 0.0, 0.4),
         }
         self.hp_dict = None   # currently active hyper-parameters
         self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
@@ -67,16 +60,39 @@ class AdjusterModel(AbstractModel):
         self.truths = None # the last 'y' values. shape = (HPO_EVALUATION_PEROID)
 
 
+    def _set_gpm_kernel(self):
+        kernels = {
+            # name      : (class, need_lengthscale)
+            'RBF'       : (gp.kernels.RBF, True),
+            'Matern32'  : (gp.kernels.Matern32, True),
+            'Matern52'  : (gp.kernels.Matern52, True),
+            'Linear'    : (gp.kernels.Linear, False),
+            'Brownian'  : (gp.kernels.Brownian, False),
+        }
+
+        input_dim = 1
+        variance = torch.tensor(1)
+        lengthscale = torch.tensor(1.5)
+        kernel_name = self.configs.gpm_kernel
+        kernel_class = kernels[kernel_name][0]
+        need_lengthscale = kernels[kernel_name][1]
+        if need_lengthscale:
+            self.kernel = kernel_class(input_dim=input_dim, variance=variance, lengthscale=lengthscale)
+        else:
+            self.kernel = kernel_class(input_dim=input_dim, variance=variance)
+
+
     def _train_new_gpmodel(self, hp_dict, y):
         pyro.clear_param_store() # NOTE : Need to do everytime? 
 
         lookback_window_size = int(hp_dict['lookback_window_size'])
+        noise = int(hp_dict['noise'])
         if len(y) > lookback_window_size+1:
             y = y[-(lookback_window_size+1):]
         X = y[:-1]
         y = y[1:]
         gpm = gp.models.GPRegression(X, y, self.kernel, 
-                                            noise=torch.tensor(0.2), mean_function=None, jitter=1e-6)
+                                            noise=torch.tensor(noise), mean_function=None, jitter=1e-6)
         gpm.set_data(X, y)
         self.optimizer = torch.optim.Adam(gpm.parameters(), lr=0.005)
         self.loss_fn = pyro.infer.Trace_ELBO().differentiable_loss
@@ -116,11 +132,11 @@ class AdjusterModel(AbstractModel):
         # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
         def _evaluate_hp(hp_dict):
             deviations = (self.truths - self.y_hat_cbm)[:-1] # exclude the last one, becuause it is the target to predict
-            assert len(self.truths) > self.MAX_LOOKBACK_WIN
+            assert len(deviations) > self.MAX_LOOKBACK_WIN
             t = self.MAX_LOOKBACK_WIN # We should start from the same timestep to evaluate the same period.
             gpm = None            
             losses = []
-            while t < len(self.truths):
+            while t < len(deviations):
                 if gpm is None:
                     gpm = self._train_new_gpmodel(hp_dict, torch.Tensor(deviations[:t]))
                 else:
@@ -179,13 +195,15 @@ class AdjusterModel(AbstractModel):
             self.hp_dict = hp_boa
             logger.info(f"Adjuster HPO : lookback_window_size = {hp_boa['lookback_window_size']}")
         else:
-            self.hp_dict = {'lookback_window_size':self.configs.gpm_lookback_win}
+            self.hp_dict = {
+                'lookback_window_size':self.configs.gpm_lookback_win,
+                'noise':self.configs.gpm_noise
+                }
 
         # Gaussian Process model is to used to predict next deviation from past predctions
         # We exclude the last deviation for training, becuause that is the actual target. 
         deviations = (self.truths - self.y_hat_cbm)[:-1]
         self.gpm = self._train_new_gpmodel(self.hp_dict, torch.Tensor(deviations))
-
 
 
     def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = False):

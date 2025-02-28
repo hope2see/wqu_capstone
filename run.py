@@ -231,6 +231,8 @@ def _get_parser(model_name=None):
                         help="max number of evaluation for HPO [default: 100]")
 
     # Adjuster
+    parser.add_argument('--gpm_kernel', type=str, default='RBF', help='kernel of Gaussian Process [RBF, Matern32, Matern52, Linear, Brownian]')
+    parser.add_argument('--gpm_noise', type=float, default=0.1, help='noise for Gaussian Process Kernel')
     parser.add_argument('--max_gp_opt_steps', type=int, default=2000, 
                         help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
     parser.add_argument('--quantile', type=float, default=0.95, 

@@ -163,7 +163,7 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, basemodels):
     print_dataframe(df, 'Model Losses')
 
 
-def _measure_classifier_performance(truths, predictions, classification_method='up_down', threshold=0.002):
+def _measure_classifier_performance(truths, predictions, classification_method='up_down', threshold=0.005):
     if classification_method == 'up_down': # (1,0)
         true_labels = (truths > 0.0).astype(int) 
         pred_labels = (predictions > 0.0).astype(int) 
@@ -182,7 +182,8 @@ def _measure_classifier_performance(truths, predictions, classification_method='
 
 
 def report_classifier_performance(y, y_hat_adj, y_hat_cbm, y_hat_bsm, basemodels, filepath=None):
-    for cl_method in ['up_down', 'up_down_sideway']:
+    # for cl_method in ['up_down', 'up_down_sideway']:
+    for cl_method in ['up_down']:
         df = pd.DataFrame() 
         df['Adjuster'] = _measure_classifier_performance(y, y_hat_adj, cl_method)
         df['Combiner'] = _measure_classifier_performance(y, y_hat_cbm, cl_method)

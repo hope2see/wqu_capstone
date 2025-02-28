@@ -15,7 +15,6 @@ def print_dataframe(df, title, print_index=True, filepath=None):
     buffer = io.StringIO()
     print('\n'+title, file=buffer)
     print(df.to_string(index=print_index), file=buffer)
-    print(buffer.getvalue())
     logger.info(buffer.getvalue())
     if filepath is not None:
         f = open(filepath, 'w')

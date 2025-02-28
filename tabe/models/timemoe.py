@@ -48,7 +48,7 @@ class TimeMoE(AbstractModel):
     def test(self):
         raise NotImplementedError
 
-    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training: bool = False):
+    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = False):
         assert batch_x.shape[0]==1 and batch_y.shape[0]==1
 
         # Given: batch_x.shape = (batch_len=1, seq_len, feature_dim)
@@ -66,7 +66,7 @@ class TimeMoE(AbstractModel):
 
         # calculate the actuall loss of next timestep
         y = batch_y[0, -1:, -1] 
-        loss = criterion(torch.tensor(y_hat), y).item()
+        loss = self.criterion(torch.tensor(y_hat), y).item()
 
         if training: # TODO 
             pass

@@ -6,17 +6,14 @@
 
 import time
 import numpy as np
-import warnings
-import numpy as np
+import pandas as pd
 import torch
 
 from hyperopt import hp, tpe, rand, fmin, Trials, STATUS_OK
 from sklearn.metrics import mean_absolute_error as MAE
 
-
-from utils.tools import EarlyStopping, adjust_learning_rate, visual
+from utils.tools import adjust_learning_rate, visual
 from utils.metrics import metric
-from models import TimesNet, DLinear, PatchTST, iTransformer, TimeMixer, TSMixer
 
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
@@ -24,7 +21,7 @@ import tabe.utils.report as report
 from tabe.utils.mem_util import MemUtil
 from tabe.utils.logger import logger
 
-
+import warnings
 warnings.filterwarnings('ignore')
 
 
@@ -184,7 +181,9 @@ class CombinerModel(AbstractModel):
                        trials=trials, rstate=np.random.default_rng(1), verbose=True)
 
         spent_time = (time.time() - time_now) 
+
         logger.info(f'Combiner._optimize_HP() : {spent_time:.4f} sec elapsed')
+        report.print_dict(best_hp, '[ Combiner HP ]')
 
         return best_hp, trials
 
@@ -197,12 +196,11 @@ class CombinerModel(AbstractModel):
 
         basemodel_preds = np.empty((len(self.basemodels), len(train_loader)))
         basemodel_losses = np.empty((len(self.basemodels), len(train_loader)))
-        criterion = self._select_criterion()
 
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
             for m, basemodel in enumerate(self.basemodels):
                 basemodel_losses[m, t], basemodel_preds[m, t] = basemodel.proceed_onestep(
-                    batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, 
+                    batch_x, batch_y, batch_x_mark, batch_y_mark, 
                     training=True) # NOTE : Base models ARE trained in ensemble_training period.
             _mem_util.print_memory_usage()
 
@@ -215,13 +213,13 @@ class CombinerModel(AbstractModel):
         self.truths = train_dataset.data_y[-hpo_peroid:, -1]
         hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
 
-        report.plot_hpo_result(hp_boa, trials_boa, "HyperParameter Optimization for Combiner",
+        report.plot_hpo_result(trials_boa, "HyperParameter Optimization for Combiner",
                             self._get_result_path()+"/hpo_result.pdf")
     
         self.hp_dict = hp_boa
         
 
-    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training: bool = True):
+    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = True):
         assert batch_x.shape[0]==1 and batch_y.shape[0]==1
 
         basemodel_preds = np.empty((len(self.basemodels)))
@@ -229,7 +227,7 @@ class CombinerModel(AbstractModel):
 
         for m, basemodel in enumerate(self.basemodels):
             basemodel_preds[m], basemodel_losses[m, 0] = basemodel.proceed_onestep(
-                batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training) 
+                batch_x, batch_y, batch_x_mark, batch_y_mark, training) 
 
         basemodel_losses = np.concatenate((self.basemodel_losses, basemodel_losses), axis=1)
         lookback_window_size = int(self.hp_dict['lookback_window_size'])
@@ -265,11 +263,10 @@ class CombinerModel(AbstractModel):
         # prepare the forecasted values of base models in test period
         basemodel_preds = np.empty((len(self.basemodels), len(test_loader)))
         basemodel_losses = np.empty((len(self.basemodels), len(test_loader)))
-        criterion = self._select_criterion()
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
             for m, basemodel in enumerate(self.basemodels):
                 basemodel_preds[m, t] = basemodel.proceed_onestep(
-                    batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training=True)      
+                    batch_x, batch_y, batch_x_mark, batch_y_mark, training=True)      
                 
         # compute CombinerModel's predictions
         y_hat = np.empty_like(y)
@@ -301,7 +298,7 @@ class CombinerModel(AbstractModel):
             y = test_data.inverse_transform(data_y)[:, -1]
             y_hat = test_data.inverse_transform(data_y_hat)[:, -1]
 
-        losses = criterion(torch.tensor(y_hat), y)
+        losses = self.criterion(torch.tensor(y_hat), y)
 
         logger.info(f"CombinerModel.test() : Loss ----- ")
         logger.info(f"max={np.max(losses):.6f}, mean={np.mean(losses):.6f}, min={np.min(losses):.6f}, var={np.var(losses):.6f})")

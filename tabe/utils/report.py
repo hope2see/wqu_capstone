@@ -9,14 +9,8 @@ from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
 from tabe.utils.logger import logger
 
 
-def plot_hpo_result(HP, trials, title, filepath=None):
-    buffer = io.StringIO()
-    print("\nHyperparameters:", file=buffer)
-    hp_df = pd.DataFrame(HP, index=[0])
-    print(hp_df.to_string(index=False), file=buffer)
-    logger.info(buffer.getvalue())
-
-    # Plot the optimization progress (loss and loss variance) 
+# Plot the optimization progress (loss and loss variance) 
+def plot_hpo_result(trials, title='HyperParameter Optimization', filepath=None):
     losses = [t['result']['loss'] for t in trials]           
     # variances = [t['result']['loss_variance'] for t in trials]
     trial_numbers = np.arange(1, len(losses)+1)
@@ -176,12 +170,22 @@ def report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, filepath=None):
     return losses_adj, losses_cbm, losses_bsm
 
 
-def report_trading_simulation(df_sim_result, strategy, days, filepath=None):
+def print_dataframe(df, title, print_index=True, filepath=None):
     buffer = io.StringIO()
-    print(f"\n[ Trading Simulation Results: (Strategy:{strategy}, Days:{days} ]", file=buffer)
-    print(df_sim_result.to_string(), file=buffer)
+    print('\n'+title, file=buffer)
+    print(df.to_string(index=print_index), file=buffer)
+    print(buffer.getvalue())
     logger.info(buffer.getvalue())
     if filepath is not None:
         f = open(filepath, 'w')
         f.write(buffer.getvalue())
         f.close()
+
+def print_dict(dt, title):
+    df = pd.DataFrame(dt,index=[0])
+    print_dataframe(df, title, print_index=False)
+
+
+def report_trading_simulation(df_sim_result, strategy, days, filepath=None):
+    title = f"\n[ Trading Simulation Results: (Strategy:{strategy}, Days:{days} ]"
+    print_dataframe(df_sim_result, title, print_index=False, filepath=filepath)

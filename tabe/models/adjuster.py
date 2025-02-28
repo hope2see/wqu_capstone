@@ -148,6 +148,7 @@ class AdjusterModel(AbstractModel):
 
         spent_time = (time.time() - time_now) 
         logger.info(f'Adjuster._optimize_HP() : {spent_time:.4f} sec elapsed')
+        report.print_dict(best_hp, '[ Adjuster HP ]')
 
         return best_hp, trials
 
@@ -161,11 +162,10 @@ class AdjusterModel(AbstractModel):
         assert len(y) == len(train_loader)
 
         y_hat_cbm = np.empty_like(y)
-        criterion = self._select_criterion()
 
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(train_loader):
             y_hat_t, _ = self.combiner_model.proceed_onestep(
-                batch_x, batch_y, batch_x_mark, batch_y_mark, criterion)
+                batch_x, batch_y, batch_x_mark, batch_y_mark)
             y_hat_cbm[t] = y_hat_t
             _mem_util.print_memory_usage()
 
@@ -174,7 +174,7 @@ class AdjusterModel(AbstractModel):
         self.truths = y[-eval_peroid:]
         if self.configs.adaptive_hpo:
             hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
-            report.plot_hpo_result(hp_boa, trials_boa, "HyperParameter Optimization for Adjuster",
+            report.plot_hpo_result(trials_boa, "HyperParameter Optimization for Adjuster",
                                 self._get_result_path()+"/hpo_result.pdf")
             self.hp_dict = hp_boa
             logger.info(f"Adjuster HPO : lookback_window_size = {hp_boa['lookback_window_size']}")
@@ -188,7 +188,7 @@ class AdjusterModel(AbstractModel):
 
 
 
-    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training: bool = False):
+    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = False):
         assert batch_x.shape[0]==1 and batch_y.shape[0]==1
 
         # estimate the next deviation with the last deviation 
@@ -196,7 +196,7 @@ class AdjusterModel(AbstractModel):
 
         # get combiner model's predition
         y_hat_cbm, y_hat_bsm = self.combiner_model.proceed_onestep(
-            batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training)                
+            batch_x, batch_y, batch_x_mark, batch_y_mark, training)                
 
         # adjust combinerModel's prediction by adding expected deviation 
         y_hat = y_hat_cbm + pred_deviation
@@ -239,7 +239,7 @@ class AdjusterModel(AbstractModel):
 
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
             y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t], y_hat_q_low[t], y_hat_q_high[t] = \
-                self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, self._select_criterion(), training=True)            
+                self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, training=True)            
             _mem_util.print_memory_usage()
 
         report.plot_gpmodel(self.gpm, filepath=self._get_result_path()+"/gpmodel_analysis.pdf")

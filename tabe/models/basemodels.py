@@ -43,13 +43,13 @@ class StatisticalModel(AbstractModel):
     def load_saved_model(self):
         pass
 
-    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training: bool = False):
+    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = False):
         assert batch_x.shape[0]==1 and batch_y.shape[0]==1
         endog = batch_y[0, :self.configs.seq_len, -1] # shape=(B,S+1,F) B(Batch Size)=1, S(Sequence Length)+1, F(Feature Dimension)
         endog = endog.numpy()
         pred = self._fit(endog).forecast(steps=1)
         truth = batch_y[0, -1, -1] 
-        loss = criterion(torch.tensor(pred), truth).item()
+        loss = self.criterion(torch.tensor(pred), truth).item()
         return pred[0], loss
     
 
@@ -94,7 +94,7 @@ class TSLibModel(AbstractModel):
         logger.info(f'loading saved model from {path}')
         self.model.load_state_dict(torch.load(path))
 
-    def _forward_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion):
+    def _forward_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark):
         batch_x = batch_x.float().to(self.device)
         n_batch, n_vars = batch_y.shape[0], batch_y.shape[2] 
         batch_y = batch_y.float().to(self.device)
@@ -123,7 +123,7 @@ class TSLibModel(AbstractModel):
         f_dim = -1 if self.configs.features == 'MS' else 0
         outputs = outputs[:, -self.configs.pred_len:, f_dim:]
         batch_y = batch_y[:, -self.configs.pred_len:, f_dim:].to(self.device)
-        loss = criterion(outputs, batch_y)
+        loss = self.criterion(outputs, batch_y)
         return loss, outputs
 
 
@@ -132,17 +132,17 @@ class TSLibModel(AbstractModel):
     # When training is needed, only one epoch (for the given batch) is performed! 
     # And, validation is not performed.. 
     # Is it okay?? 
-    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion, training: bool = False):
+    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = False):
         assert batch_x.shape[0]==1 and batch_y.shape[0]==1
 
         # forward onestep, and get the prediction and loss
         self.model.eval()
-        loss, outputs = self._forward_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion)
+        loss, outputs = self._forward_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark)
         loss = loss.item()
         pred = outputs[0, -1, -1].item()
 
         if training: 
-            self._train_batch_with_validation(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion)
+            self._train_batch_with_validation(batch_x, batch_y, batch_x_mark, batch_y_mark)
 
         return pred, loss
 
@@ -150,7 +150,7 @@ class TSLibModel(AbstractModel):
     # NOTE 
     # Is it okay to train repeatitively with the same one batch?? 
     # Or, do we have to use all 'train period' datapoint? 
-    def _train_batch_with_validation(self, batch_x, batch_y, batch_x_mark, batch_y_mark, criterion):
+    def _train_batch_with_validation(self, batch_x, batch_y, batch_x_mark, batch_y_mark):
         vali_data, vali_loader = get_data_provider(self.configs, flag='val')
 
         time_now = time.time()
@@ -170,7 +170,7 @@ class TSLibModel(AbstractModel):
             self.model.train()
             model_optim.zero_grad()
 
-            loss, _ = self._forward_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion)
+            loss, _ = self._forward_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark)
             train_loss.append(loss.item())
 
             if self.configs.use_amp:
@@ -182,7 +182,7 @@ class TSLibModel(AbstractModel):
                 model_optim.step()
 
             train_loss = np.average(train_loss)
-            vali_loss = self._validate(vali_data, vali_loader, criterion)
+            vali_loss = self._validate(vali_data, vali_loader)
 
             logger.info(f"Epoch: {epoch + 1} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f}")
 
@@ -212,7 +212,6 @@ class TSLibModel(AbstractModel):
             self.early_stopping.reset()
 
         model_optim = self._select_optimizer()
-        criterion = self._select_criterion()
 
         if self.configs.use_amp:
             scaler = torch.cuda.amp.GradScaler()
@@ -227,7 +226,7 @@ class TSLibModel(AbstractModel):
                 iter_count += 1
                 model_optim.zero_grad()
 
-                loss, _ = self._forward_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, criterion)
+                loss, _ = self._forward_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark)
                 train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
@@ -247,7 +246,7 @@ class TSLibModel(AbstractModel):
                     model_optim.step()
 
             train_loss = np.average(train_loss)
-            vali_loss = self._validate(vali_data, vali_loader, criterion)
+            vali_loss = self._validate(vali_data, vali_loader)
             logger.info(f"Epoch {epoch+1}, Train Loss: {train_loss:.6f} Vali Loss: {vali_loss:.6f}, Spent Time: {time.time() - epoch_time:.6f}")
 
             self.early_stopping(vali_loss, self.model, self._get_checkpoint_path())
@@ -264,7 +263,7 @@ class TSLibModel(AbstractModel):
     # NOTE: 
     # The logic of this function is subordinate to train() function, 
     # and not intended to be used independently.
-    def _validate(self, vali_data, vali_loader, criterion):
+    def _validate(self, vali_data, vali_loader):
         total_loss = []
         self.model.eval()
         with torch.no_grad():
@@ -291,7 +290,7 @@ class TSLibModel(AbstractModel):
                 pred = outputs.detach().cpu()
                 true = batch_y.detach().cpu()
 
-                loss = criterion(pred, true)
+                loss = self.criterion(pred, true)
 
                 total_loss.append(loss)
         total_loss = np.average(total_loss)
@@ -397,7 +396,4 @@ class TSLibModel(AbstractModel):
         # np.save(result_path + 'pred.npy', preds)
         # np.save(result_path + 'true.npy', trues)
         return preds
-
-
-
 

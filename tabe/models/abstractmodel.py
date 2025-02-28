@@ -1,16 +1,13 @@
-
 import os
 import torch.nn as nn
-from tabe.utils.misc_util import experiment_sig
+from tabe.utils.misc_util import experiment_sig, get_loss_func
+
 
 class AbstractModel(object):
     def __init__(self, configs, name):
         self.configs = configs
         self.name = name
-
-    def _select_criterion(self):
-        criterion = nn.MSELoss()
-        return criterion
+        self.criterion = get_loss_func(self.configs.loss)
 
     def _get_checkpoint_path(self):
         path = os.path.join(self.configs.checkpoints, experiment_sig()) 

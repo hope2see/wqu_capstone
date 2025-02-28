@@ -63,12 +63,6 @@ def _model_args(arg_value, model_name):
 def _get_parser(model_name=None):
     parser = argparse.ArgumentParser()
 
-    # If model_name is given, then all the default arguments are suppressed, and only explicitly given arguments are included
-    if model_name is not None:
-        for action in parser._actions:
-            if action.dest != 'help':
-                action.default = argparse.SUPPRESS
-
     # global arguments, not-overidable by the model arguments
     if model_name is None: 
 
@@ -244,6 +238,12 @@ def _get_parser(model_name=None):
     parser.add_argument('--gpm_lookback_win', type=int, default=25, 
                         help="lookback window size for evaluating gaussian process model in the Adjuster [10 ~ 50]"
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
+
+    # If model_name is given, then all the default arguments are suppressed, and only explicitly given arguments are included
+    if model_name is not None:
+        for action in parser._actions:
+            if action.dest != 'help':
+                action.default = argparse.SUPPRESS
 
     return parser
 

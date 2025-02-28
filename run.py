@@ -399,7 +399,7 @@ def run(args=None):
 
     # result reporting -----------------
 
-    report.report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm)
+    report.report_losses(y, y_hat_adj, y_hat_cbm, y_hat_bsm, basemodels)
 
     report.plot_forecast_result(y, y_hat_adj,  y_hat_q_low, y_hat_q_high, y_hat_cbm, y_hat_bsm, basemodels,
                         filepath = result_dir + "/models_forecast_comparison.pdf")

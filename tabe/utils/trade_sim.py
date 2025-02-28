@@ -27,7 +27,7 @@ def _simulate_trading_daily_buy_sell(true_rets, pred_rets, buy_threshold, fee_ra
     return balance - 1.0, trade_stats
 
 
-def _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_threshold, fee_rate):
+def _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_threshold, fee_rate, strategy='buy_hold_sell_v1'):
     balance = 1.0
     trade_stats = []
     holding = False
@@ -39,15 +39,23 @@ def _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_th
                 balance -= balance * fee_rate
                 holding = True
         else: 
-            # If today's return or tomorrow's predicted return is below the sell_threshold, then sell
-            if (true_rets[t-1] < sell_threshold) or (pred_rets[t] < sell_threshold): # sell
-                balance += balance * true_rets[t-1]
+            # Strategy 'buy_hold_sell_v1' sell condition : 
+            #    If tomorrow's predicted return is below the sell_threshold, sell
+            sell_condition_met = (pred_rets[t] < sell_threshold) 
+            # Strategy 'buy_hold_sell_v2' sell condition : 
+            #    If 'buy_hold_sell_v1' condition is met, OR if today's return is below the sell_threshold, then sell
+            if strategy == 'buy_hold_sell_v2':
+                sell_condition_met = sell_condition_met or (true_rets[t-1] < sell_threshold)
+
+            if sell_condition_met: 
+                balance += balance * true_rets[t-1] # sell at today's close price.
                 balance -= balance * fee_rate
                 profit_rate = (balance - orig_balance) / orig_balance
                 trade_stats.append([t, balance, profit_rate])
                 holding = False
+            # Otherwise, accumulate today's return
             else:
-                balance += balance * true_rets[t-1]
+                balance += balance * true_rets[t-1] 
 
     if holding: # sell at the last day
         balance += balance * true_rets[t]
@@ -59,15 +67,16 @@ def _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_th
 
 
 def simulate_trading(true_rets, pred_rets, strategy='daily_buy_sell', buy_threshold=0.002, sell_threshold=0.0, fee_rate=0.001):
-    assert strategy == 'buy_and_hold' or strategy == 'daily_buy_sell' or strategy == 'buy_hold_sell'
+    assert strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell_v1', 'buy_hold_sell_v2']
     assert len(true_rets) == len(pred_rets)
 
     if strategy == 'buy_and_hold':
         accumulated_ret, trade_stats = _simulate_trading_buy_and_hold(true_rets, fee_rate)
     elif strategy == 'daily_buy_sell':
         accumulated_ret, trade_stats = _simulate_trading_daily_buy_sell(true_rets, pred_rets, buy_threshold, fee_rate)
-    else: # strategy == 'buy_hold_sell':
-        accumulated_ret, trade_stats = _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_threshold, fee_rate)
+    else: # 'buy_hold_sell_v1', 'buy_hold_sell_v2'
+        accumulated_ret, trade_stats = _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, sell_threshold, 
+                                                                       fee_rate, strategy)
         
     num_of_trades = len(trade_stats)
     trade_stats = np.array(trade_stats)

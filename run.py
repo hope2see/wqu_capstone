@@ -412,16 +412,14 @@ def run(args=None):
             pass # OK
         elif target_datatype == 'LogRet':
             y = np.exp(y) - 1
-            y_hat_adj = np.exp(y) - 1
             y_hat_adj = np.exp(y_hat_adj) - 1
             y_hat_q_low = np.exp(y_hat_q_low) - 1
             y_hat_cbm = np.exp(y_hat_cbm) - 1
-            y_hat_q_low = np.exp(y_hat_q_low) - 1
             for i in range(len(y_hat_bsm)):
                 y_hat_bsm[i] = np.exp(y_hat_bsm[i]) - 1
 
         # Simulation with 'Ret'
-        for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell']:
+        for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell_v1', 'buy_hold_sell_v2']:
             df_sim_result = pd.DataFrame() 
             df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy=strategy)
             df_sim_result['Adjuster_p'] = simulate_trading(y, y_hat_q_low, strategy=strategy)

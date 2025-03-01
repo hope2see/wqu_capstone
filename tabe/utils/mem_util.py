@@ -28,7 +28,7 @@ class MemUtil(object):
 
     def start_python_memory_tracking(self):
         if MemUtil._tracemalloc_started:
-            logger.warn("Warning: start_python_memory_tracking() is called before stop_python_memory_tracking()")
+            logger.warning("Warning: start_python_memory_tracking() is called before stop_python_memory_tracking()")
         else:
             tracemalloc.start()
             MemUtil._tracemalloc_started = True
@@ -38,7 +38,7 @@ class MemUtil(object):
             tracemalloc.stop()
             MemUtil._tracemalloc_started = False
         else:
-            logger.warn("Warning: stop_python_memory_tracking() is called before start_python_memory_tracking()")
+            logger.warning("Warning: stop_python_memory_tracking() is called before start_python_memory_tracking()")
 
     def print_python_memory_usage(self):
         current, peak = tracemalloc.get_traced_memory()

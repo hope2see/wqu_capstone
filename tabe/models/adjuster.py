@@ -17,9 +17,8 @@ from hyperopt import hp, tpe, rand, fmin, Trials, STATUS_OK
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 from tabe.utils.mem_util import MemUtil
-from tabe.utils.misc_util import logger
+from tabe.utils.misc_util import logger, EarlyStopping
 import tabe.utils.report as report
-
 
 smoke_test = "CI" in os.environ  # ignore; used to check code integrity in the Pyro repo
 assert pyro.__version__.startswith('1.9.1')
@@ -52,7 +51,7 @@ class AdjusterModel(AbstractModel):
         self.gpm = None # Gaussain Process Model 
         self.hp_space = {
             'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 2),
-            'noise': hp.uniform('noise', 0.0, 0.4),
+            # 'noise': hp.uniform('noise', 0.0, 0.4),
         }
         self.hp_dict = None   # currently active hyper-parameters
         self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
@@ -86,7 +85,8 @@ class AdjusterModel(AbstractModel):
         pyro.clear_param_store() # NOTE : Need to do everytime? 
 
         lookback_window_size = int(hp_dict['lookback_window_size'])
-        noise = int(hp_dict['noise'])
+        # noise = int(hp_dict['noise'])
+        noise = self.configs.gpm_noise
         if len(y) > lookback_window_size+1:
             y = y[-(lookback_window_size+1):]
         X = y[:-1]
@@ -127,6 +127,8 @@ class AdjusterModel(AbstractModel):
 
 
     def _optimize_HP(self, use_BOA=False, max_evals=10):
+        class _EarlyStopException(Exception):
+            pass
 
         # Objective function (loss function) for hyper-parameter optimization
         # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
@@ -148,6 +150,10 @@ class AdjusterModel(AbstractModel):
                 t += 1
             mean_loss = np.mean(losses)
             var_loss = np.var(losses)
+            self.early_stopping(mean_loss, hp_dict)
+            if self.early_stopping.early_stop:
+                self.best_hp = self.early_stopping.best_model
+                raise _EarlyStopException(f"min loss = {mean_loss}")
 
             return {
                 'loss': mean_loss,         
@@ -159,14 +165,18 @@ class AdjusterModel(AbstractModel):
 
         trials = Trials()
         algo = tpe.suggest if use_BOA else rand.suggest
-        best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
+        self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True, save_to_file=False)
+        try:
+            self.best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
                        trials=trials, rstate=np.random.default_rng(1), verbose=True)
+        except _EarlyStopException as e:
+            logger.info(f"Early stopped: {e}")
 
         spent_time = (time.time() - time_now) 
         logger.info(f'Adjuster._optimize_HP() : {spent_time:.4f} sec elapsed')
-        report.print_dict(best_hp, '[ Adjuster HP ]')
+        report.print_dict(self.best_hp, '[ Adjuster HP ]')
 
-        return best_hp, trials
+        return self.best_hp, trials
 
 
     def train(self):

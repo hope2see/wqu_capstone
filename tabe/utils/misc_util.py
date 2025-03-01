@@ -40,17 +40,17 @@ def get_loss_func(loss:str):
 #  -----------------------------------------------------
 
 class EarlyStopping:
-    def __init__(self, patience=7, verbose=False, delta=0):
+    def __init__(self, patience=7, verbose=False, delta=0, save_to_file=True):
         self.patience = patience
         self.verbose = verbose
+        self.delta = delta
+        self.save_to_file = save_to_file
         self.counter = 0
         self.best_score = None
         self.early_stop = False
-        # np.Inf` was removed in the NumPy 2.0 release. Use `np.inf` instead.
-        self.val_loss_min = np.inf # np.Inf
-        self.delta = delta
+        self.val_loss_min = np.inf 
 
-    def __call__(self, val_loss, model, path):
+    def __call__(self, val_loss, model, path=None):
         score = -val_loss
         if self.best_score is None:
             self.best_score = score
@@ -59,17 +59,22 @@ class EarlyStopping:
             self.counter += 1
             logger.debug(f'EarlyStopping counter: {self.counter} out of {self.patience}')
             if self.counter >= self.patience:
+                logger.debug(f'EarlyStopping early_stop triggered!')
                 self.early_stop = True
         else:
             self.best_score = score
-            self.save_checkpoint(val_loss, model, path)
             self.counter = 0
+            self.save_checkpoint(val_loss, model, path)
 
     def save_checkpoint(self, val_loss, model, path):
         if self.verbose:
-            logger.info(f'Validation loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
-        torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
+            logger.info(f'loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
         self.val_loss_min = val_loss
+        if self.save_to_file:
+            torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
+        else:
+            self.best_model = model
+
 
     # In order to do 'continous train()', we should keep tracking best_model. 
     # We use one EarlyStopping instance to track best_model while resetting it when needed. 

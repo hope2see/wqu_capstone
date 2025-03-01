@@ -20,6 +20,7 @@ from tabe.models.abstractmodel import AbstractModel
 import tabe.utils.report as report
 from tabe.utils.mem_util import MemUtil
 from tabe.utils.logger import logger
+from tabe.utils.misc_util import EarlyStopping
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -147,6 +148,8 @@ class CombinerModel(AbstractModel):
 
 
     def _optimize_HP(self, use_BOA=True, max_evals=100):
+        class _EarlyStopException(Exception):
+            pass
 
         # Objective function (loss function) for hyper-parameter optimization
         # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
@@ -164,6 +167,10 @@ class CombinerModel(AbstractModel):
                 t += 1
             mean_loss = np.mean(losses)
             var_loss = np.var(losses)
+            self.early_stopping(mean_loss, hp_dict)
+            if self.early_stopping.early_stop:
+                self.best_hp = self.early_stopping.best_model
+                raise _EarlyStopException(f"min loss = {mean_loss}")
 
             return {
                 # TODO : add basemodel_weights 
@@ -176,16 +183,19 @@ class CombinerModel(AbstractModel):
 
         trials = Trials()
         algo = tpe.suggest if use_BOA else rand.suggest
-        # algo = partial(algo, n_startup_jobs=1) 
-        best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
+        self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True, save_to_file=False)
+        try :
+            self.best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
                        trials=trials, rstate=np.random.default_rng(1), verbose=True)
-
+        except _EarlyStopException as e:
+            logger.info(f"Early stopped: {e}")
+            
         spent_time = (time.time() - time_now) 
 
         logger.info(f'Combiner._optimize_HP() : {spent_time:.4f} sec elapsed')
-        report.print_dict(best_hp, '[ Combiner HP ]')
+        report.print_dict(self.best_hp, '[ Combiner HP ]')
 
-        return best_hp, trials
+        return self.best_hp, trials
 
 
     def train(self):

@@ -9,8 +9,9 @@ models_used='S_E_TM'
 etc_desc='grid'
 
 # for gpm_lookback_win in 10 20 30 40 50
-for gpm_lookback_win in 10 30 50; do 
-for gpm_noise in 0.1 0.25 0.4; do 
+for gpm_lookback_win in 5 10 30 50; do 
+# for gpm_noise in 0.1 0.25 0.4; do 
+gpm_noise=0.1
 python -u run.py \
     --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc'_'$gpm_lookback_win'_'$gpm_noise')' \
     --task_name long_term_forecast --loss 'MAE' --is_training 1 \
@@ -31,7 +32,7 @@ python -u run.py \
     # --basemodel 'DLinear' \
     # --basemodel 'PatchTST' \
     # --basemodel 'TimeXer' \
-done
+# done
 done 
 
 

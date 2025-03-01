@@ -8,7 +8,6 @@ models_used='S_E_TM'
 # Grid Search of Hyperparameters
 etc_desc='grid'
 
-# for gpm_lookback_win in 5 10 20 30 40 50 70 100; do 
 for gpm_lookback_win in 5 10 15 25 30 40 50; do 
 # for gpm_noise in 0.1 0.25 0.4; do 
 gpm_noise=0.1
@@ -26,7 +25,8 @@ python -u run.py \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
     --basemodel 'TimeMoE' \
-    --adjuster '--gpm_lookback_win '$gpm_lookback_win' --gpm_noise '$gpm_noise' --max_gp_opt_steps 500 --quantile 0.8 --gpm_kernel Matern32'
+    --patience 10 \
+    --adjuster '--gpm_lookback_win '$gpm_lookback_win' --gpm_noise '$gpm_noise' --max_gp_opt_steps 3000 --quantile 0.8 --gpm_kernel Matern32'
     # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
     # --basemodel 'iTransformer' \
     # --basemodel 'DLinear' \
@@ -55,7 +55,8 @@ python -u run.py \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
     --basemodel 'TimeMoE' \
-    --adjuster '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 20 --max_gp_opt_steps 500 --quantile 0.8 --gpm_kernel Matern32'
+    --patience 10 \
+    --adjuster '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 20 --max_gp_opt_steps 3000 --quantile 0.8 --gpm_kernel Matern32'
     # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
     # --basemodel 'iTransformer' \
     # --basemodel 'DLinear' \

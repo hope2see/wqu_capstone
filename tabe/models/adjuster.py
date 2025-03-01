@@ -171,7 +171,7 @@ class AdjusterModel(AbstractModel):
             self.early_stopping(mean_loss, hp_dict)
             if self.early_stopping.early_stop:
                 self.best_hp = self.early_stopping.best_model
-                raise _EarlyStopException(f"min loss = {mean_loss}")
+                raise _EarlyStopException()
 
             return {
                 'loss': mean_loss,         
@@ -188,10 +188,10 @@ class AdjusterModel(AbstractModel):
             self.best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
                        trials=trials, rstate=np.random.default_rng(1), verbose=True)
         except _EarlyStopException as e:
-            logger.info(f"Early stopped: {e}")
+            logger.info("Early stopped!")
 
         spent_time = (time.time() - time_now) 
-        logger.info(f'Adjuster._optimize_HP() : {spent_time:.4f} sec elapsed')
+        logger.info(f'Adjuster._optimize_HP() : {spent_time:.4f}sec elapsed. min_loss={self.early_stopping.val_loss_min}')
         report.print_dict(self.best_hp, '[ Adjuster HP ]')
 
         return self.best_hp, trials

@@ -110,7 +110,7 @@ def print_configs(configs):
 
     logger.info("\033[1m" + f"Data {configs.data:<20}" + "\033[0m")
     logger.info(f'  {"Features:":<20}{configs.features:<20}{configs.target:<20}{"Freq:":<20}{configs.freq:<20}')
-    logger.info(f'  {"Target Val:":<20}{configs.target_datatype:<20}{"Target Column:":<20}')
+    logger.info(f'  {"Target datatype:":<20}{configs.target_datatype:<20}{"Target Column:":<20}')
     logger.info(f'  {"Root Path:":<20}{configs.root_path:<20}{"Data Path:":<20}{configs.data_path:<20}')
     logger.info(f'  {"Checkpoints:":<20}{configs.checkpoints:<20}')
     logger.info('')

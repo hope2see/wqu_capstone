@@ -1,53 +1,56 @@
 export PYTHONPATH=$PYTHONPATH:./Time-Series-Library
 
+
+test_name='Cbm_ahpo'
+models_used='S_E_TM'
+etc_desc='C_nohpo'
+
+
 # No HPO
 python -u run.py \
-    --model TABE --model_id BTC1d-Combiner-HPO-None \
-    --task_name long_term_forecast \
-    --target_datatype LogRet \
-    --is_training 1 \
+    --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc')' \
+    --task_name long_term_forecast --loss 'MAE' --is_training 1 \
+    \
     --data TABE --features MS --freq d --num_workers 1 \
-    --root_path ./ --data_path dataset/btc/BTC_ret_1d.csv \
+    --target_datatype LogRet --root_path ./ --data_path dataset/btc/BTC_ret_1d.csv \
+    \
     --seq_len 32 --label_len 32 --pred_len 1 --inverse \
-    --loss 'MAE' \
-    --batch_size 16 \
-    --lradj type3 --dropout 0.1 --itr 1 --train_epochs 3 --learning_rate 0.001 \
+    --batch_size 16 --lradj type3 --learning_rate 0.001 --dropout 0.1 --itr 1 --train_epochs 3  \
     --e_layers 2 --d_layers 1 --factor 3 --enc_in 1 --dec_in 1 --c_out 1 \
+    \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
-    --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
-    --basemodel 'iTransformer' \
-    --basemodel 'DLinear' \
-    --basemodel 'PatchTST' \
-    --basemodel 'TimeXer' \
     --basemodel 'TimeMoE' \
-    --adjuster '--gpm_lookback_win 10 --max_gp_opt_steps 2000 --quantile 0.8'
+    --adjuster '--max_gp_opt_steps 2000 --quantile 0.8 --gpm_kernel Matern32'
+    # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
+    # --basemodel 'iTransformer' \
+    # --basemodel 'DLinear' \
+    # --basemodel 'PatchTST' \
+    # --basemodel 'TimeXer' \
 
 
 # HPO
-for interval in 3 5 7 9 11
+for interval in 1 3 6 9 12 15
 do
 python -u run.py \
-    --model TABE --model_id BTC1d-Combiner-HPO-$interval \
-    --task_name long_term_forecast \
-    --target_datatype LogRet \
-    --is_training 1 \
+    --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc')' \
+    --task_name long_term_forecast --loss 'MAE' --is_training 1 \
+    \
     --data TABE --features MS --freq d --num_workers 1 \
-    --root_path ./ --data_path dataset/btc/BTC_ret_1d.csv \
+    --target_datatype LogRet --root_path ./ --data_path dataset/btc/BTC_ret_1d.csv \
+    \
     --seq_len 32 --label_len 32 --pred_len 1 --inverse \
-    --loss 'MAE' \
-    --batch_size 16 \
-    --lradj type3 --dropout 0.1 --itr 1 --train_epochs 3 --learning_rate 0.001 \
+    --batch_size 16 --lradj type3 --learning_rate 0.001 --dropout 0.1 --itr 1 --train_epochs 3  \
     --e_layers 2 --d_layers 1 --factor 3 --enc_in 1 --dec_in 1 --c_out 1 \
+    \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
-    --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
-    --basemodel 'iTransformer' \
-    --basemodel 'DLinear' \
-    --basemodel 'PatchTST' \
-    --basemodel 'TimeXer' \
     --basemodel 'TimeMoE' \
-    --hpo_interval $interval \
-    --combiner '--adaptive_hpo --max_hpo_eval 100' \
-    --adjuster '--gpm_lookback_win 10 --max_gp_opt_steps 2000 --quantile 0.8'
+    --combiner '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 100' \
+    --adjuster '--max_gp_opt_steps 2000 --quantile 0.8 --gpm_kernel Matern32'
+    # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
+    # --basemodel 'iTransformer' \
+    # --basemodel 'DLinear' \
+    # --basemodel 'PatchTST' \
+    # --basemodel 'TimeXer' \
 done

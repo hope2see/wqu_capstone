@@ -4,7 +4,7 @@ import logging
 _LOGGER_CACHE = {}  # {name: logging.Logger}
 
 default_formatter = logging.Formatter(
-    '%(asctime)s - %(filename)s[%(funcName)s] - %(levelname)s: %(message)s'
+    '%(asctime)s [%(filename)s(%(lineno)d)] - %(levelname)s: %(message)s'
 #     '%(asctime)s - %(filename)s[pid:%(process)d;line:%(lineno)d:%(funcName)s] - %(levelname)s: %(message)s'
 )
 

@@ -1,58 +1,32 @@
 export PYTHONPATH=$PYTHONPATH:./Time-Series-Library
 
-kernel=RBF
 
-# No HPO
-python -u run.py \
-    --model TABE --model_id BTC1d-Adj-hpo0-Combiner-hpo5 \
-    --task_name long_term_forecast \
-    --target_datatype LogRet \
-    --is_training 1 \
-    --data TABE --features MS --freq d --num_workers 1 \
-    --root_path ./ --data_path dataset/btc/BTC_ret_1d.csv \
-    --seq_len 32 --label_len 32 --pred_len 1 --inverse \
-    --loss 'MAE' \
-    --batch_size 16 \
-    --lradj type3 --dropout 0.1 --itr 1 --train_epochs 3 --learning_rate 0.001 \
-    --e_layers 2 --d_layers 1 --factor 3 --enc_in 1 --dec_in 1 --c_out 1 \
-    --basemodel 'SarimaModel' \
-    --basemodel 'EtsModel' \
-    --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
-    --basemodel 'iTransformer' \
-    --basemodel 'DLinear' \
-    --basemodel 'PatchTST' \
-    --basemodel 'TimeXer' \
-    --basemodel 'TimeMoE' \
-    --combiner '--adaptive_hpo --hpo_interval 5 --max_hpo_eval 100' \
-    --gpm_kernel $kernel \
-    --adjuster '--gpm_lookback_win 10 --max_gp_opt_steps 2000 --quantile 0.8'
+test_name='Adj_ahpo'
+models_used='S_E_TM'
+etc_desc='C_nohpo'
 
 
 # HPO
-for interval in 3 5 7 9
+for interval in 1 3 6 9 12 15
 do
 python -u run.py \
-    --model TABE --model_id BTC1d-Adj-hpo0-Combiner-hpo5 \
-    --task_name long_term_forecast \
-    --target_datatype LogRet \
-    --is_training 1 \
+    --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc')' \
+    --task_name long_term_forecast --loss 'MAE' --is_training 1 \
+    \
     --data TABE --features MS --freq d --num_workers 1 \
-    --root_path ./ --data_path dataset/btc/BTC_ret_1d.csv \
+    --target_datatype LogRet --root_path ./ --data_path dataset/btc/BTC_ret_1d.csv \
+    \
     --seq_len 32 --label_len 32 --pred_len 1 --inverse \
-    --loss 'MAE' \
-    --batch_size 16 \
-    --lradj type3 --dropout 0.1 --itr 1 --train_epochs 3 --learning_rate 0.001 \
+    --batch_size 16 --lradj type3 --learning_rate 0.001 --dropout 0.1 --itr 1 --train_epochs 3  \
     --e_layers 2 --d_layers 1 --factor 3 --enc_in 1 --dec_in 1 --c_out 1 \
+    \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
-    --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
-    --basemodel 'iTransformer' \
-    --basemodel 'DLinear' \
-    --basemodel 'PatchTST' \
-    --basemodel 'TimeXer' \
-    --basemodel 'TimeMoE' \
-    --combiner '--adaptive_hpo --hpo_interval 5 --max_hpo_eval 100' \
-    --gpm_kernel $kernel \
-    --hpo_interval $interval \
-    --adjuster '--adaptive_hpo --max_hpo_eval 20 --max_gp_opt_steps 2000 --quantile 0.8'
+    --basemodel 'TimeMoE' \    
+    --adjuster '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 20 --max_gp_opt_steps 2000 --quantile 0.8 --gpm_kernel Matern32'
+    # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
+    # --basemodel 'iTransformer' \
+    # --basemodel 'DLinear' \
+    # --basemodel 'PatchTST' \
+    # --basemodel 'TimeXer' \
 done

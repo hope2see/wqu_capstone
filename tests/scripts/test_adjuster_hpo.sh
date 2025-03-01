@@ -9,7 +9,7 @@ models_used='S_E_TM'
 etc_desc='grid'
 
 # for gpm_lookback_win in 10 20 30 40 50
-for gpm_lookback_win in 5 10 30 50; do 
+for gpm_lookback_win in 5 10 20 30 40 50 70 100; do 
 # for gpm_noise in 0.1 0.25 0.4; do 
 gpm_noise=0.1
 python -u run.py \

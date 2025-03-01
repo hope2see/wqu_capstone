@@ -3,10 +3,10 @@ export PYTHONPATH=$PYTHONPATH:./Time-Series-Library
 
 test_name='Cbm_ahpo'
 models_used='S_E_TM'
-etc_desc='C_nohpo'
-
 
 # No HPO
+etc_desc='C_nohpo'
+
 python -u run.py \
     --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc')' \
     --task_name long_term_forecast --loss 'MAE' --is_training 1 \
@@ -21,7 +21,6 @@ python -u run.py \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
     --basemodel 'TimeMoE' \
-    --adjuster '--max_gp_opt_steps 2000 --quantile 0.8 --gpm_kernel Matern32'
     # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
     # --basemodel 'iTransformer' \
     # --basemodel 'DLinear' \
@@ -30,6 +29,8 @@ python -u run.py \
 
 
 # HPO
+etc_desc='C_hpo'
+
 for interval in 1 3 6 9 12 15
 do
 python -u run.py \
@@ -47,7 +48,6 @@ python -u run.py \
     --basemodel 'EtsModel' \
     --basemodel 'TimeMoE' \
     --combiner '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 100' \
-    --adjuster '--max_gp_opt_steps 2000 --quantile 0.8 --gpm_kernel Matern32'
     # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
     # --basemodel 'iTransformer' \
     # --basemodel 'DLinear' \

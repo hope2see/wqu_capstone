@@ -126,7 +126,7 @@ def _get_parser(model_name=None):
         parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
         parser.add_argument('--gpu', type=int, default=0, help='gpu')
         parser.add_argument('--gpu_type', type=str, default='cuda', help='gpu type')  # cuda or mps
-        parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
+        parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=True)
         parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
 
         # Combiner arguments for adding or overriding 
@@ -231,15 +231,15 @@ def _get_parser(model_name=None):
                         help="max number of evaluation for HPO [default: 100]")
 
     # Adjuster
-    parser.add_argument('--gpm_kernel', type=str, default='RBF', help='kernel of Gaussian Process [RBF, Matern32, Matern52, Linear, Brownian]')
-    parser.add_argument('--gpm_noise', type=float, default=0.1, help='noise for Gaussian Process Kernel')
-    parser.add_argument('--max_gp_opt_steps', type=int, default=2000, 
-                        help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
-    parser.add_argument('--quantile', type=float, default=0.95, 
-                        help="quantile level for the probabilistic prediction in the Adjuster [default: 0.95]")
     parser.add_argument('--gpm_lookback_win', type=int, default=25, 
                         help="lookback window size for evaluating gaussian process model in the Adjuster [10 ~ 50]"
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
+    parser.add_argument('--gpm_kernel', type=str, default='Matern32', help='kernel of Gaussian Process [RBF, Matern32, Matern52, Linear, Brownian]')
+    parser.add_argument('--gpm_noise', type=float, default=0.1, help='noise for Gaussian Process Kernel [0.0~]')
+    parser.add_argument('--max_gp_opt_steps', type=int, default=2000, 
+                        help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
+    parser.add_argument('--quantile', type=float, default=0.8, 
+                        help="quantile level for the probabilistic prediction in the Adjuster [default: 0.95]")
 
     # If model_name is given, then all the default arguments are suppressed, and only explicitly given arguments are included
     if model_name is not None:

@@ -31,7 +31,7 @@ _mem_util = MemUtil(rss_mem=False, python_mem=False)
 
 class AdjusterModel(AbstractModel):
     # Maximum lookback-window size for fitting gaussian process model
-    MIN_LOOKBACK_WIN = 10
+    MIN_LOOKBACK_WIN = 5
     MAX_LOOKBACK_WIN = 50
 
     # Period for HPO (HyperParameter Optimization)
@@ -41,7 +41,7 @@ class AdjusterModel(AbstractModel):
     # the latest input should be used (or added) for HPO. 
     # And, ever-growing input size is not practically acceptable. 
     # Thus, we use fixed-size evaluation period for HPO.
-    MAX_EVAL_PEROID = MAX_LOOKBACK_WIN * 4
+    MAX_EVAL_PEROID = MAX_LOOKBACK_WIN + 10
 
 
     def __init__(self, configs, combiner_model):
@@ -96,9 +96,18 @@ class AdjusterModel(AbstractModel):
         gpm.set_data(X, y)
         self.optimizer = torch.optim.Adam(gpm.parameters(), lr=0.005)
         self.loss_fn = pyro.infer.Trace_ELBO().differentiable_loss
-        gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=self.configs.max_gp_opt_steps)
+        
+        early_stopping = EarlyStopping(patience=self.configs.patience, verbose=False, save_to_file=False)
+        num_batch = 10
+        for step in range(1, self.configs.max_gp_opt_steps, num_batch):
+            loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
+            mean_loss = np.mean(loss).item()
+            if early_stopping(mean_loss, None):
+                break
+        logger.info(f"Adj.HPO: when lb_win_size={lookback_window_size}, after step {step}, loss={mean_loss:.4f}")
+        
         return gpm
-
+ 
 
     def _forward_onestep(self, hp_dict, gpm, y):
         assert y.shape[0]==1, "Allowed to add only one observation.."
@@ -113,7 +122,16 @@ class AdjusterModel(AbstractModel):
             X = X[-lookback_window_size:]
             y = y[-lookback_window_size:]
         gpm.set_data(X, y)
-        gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=self.configs.max_gp_opt_steps)
+
+        early_stopping = EarlyStopping(patience=self.configs.patience, verbose=False, save_to_file=False)
+        num_batch = 10
+        for step in range(1, self.configs.max_gp_opt_steps, num_batch):
+            loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
+            mean_loss = np.mean(loss).item()
+            if early_stopping(mean_loss, None):
+                break
+        logger.info(f"Adj.HPO: when lb_win_size={lookback_window_size}, after step {step}, loss={mean_loss:.4f}")
+
         return gpm
 
 
@@ -244,8 +262,8 @@ class AdjusterModel(AbstractModel):
             self.y_hat_cbm = np.concatenate((self.y_hat_cbm, np.array([y_hat_cbm])))
             self.truths = np.concatenate((self.truths, np.array([y])))
             if len(self.y_hat_cbm) > self.MAX_EVAL_PEROID: 
-                self.y_hat_cbm = self.y_hat_cbm[:, -self.MAX_EVAL_PEROID:]
-                self.truths = self.truths[:, -self.MAX_EVAL_PEROID:]
+                self.y_hat_cbm = self.y_hat_cbm[-self.MAX_EVAL_PEROID:]
+                self.truths = self.truths[-self.MAX_EVAL_PEROID:]
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
                 self.hp_dict, _ = self._optimize_HP(max_evals=self.configs.max_hpo_eval)

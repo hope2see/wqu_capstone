@@ -52,7 +52,7 @@ class AdjusterModel(AbstractModel):
         self.gpm = None # Gaussain Process Model 
         self.hp_space = {
             'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 2),
-            'noise': hp.quniform('noise', 0.0, 0.4),
+            'noise': hp.uniform('noise', 0.0, 0.4),
         }
         self.hp_dict = None   # currently active hyper-parameters
         self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO

@@ -22,7 +22,7 @@ python -u run.py \
     \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
-    --basemodel 'TimeMoE' \    
+    --basemodel 'TimeMoE' \
     --adjuster '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 20 --max_gp_opt_steps 2000 --quantile 0.8 --gpm_kernel Matern32'
     # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
     # --basemodel 'iTransformer' \

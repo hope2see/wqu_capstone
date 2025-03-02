@@ -17,7 +17,7 @@ from statsmodels.tsa.holtwinters import ExponentialSmoothing
 from statsmodels.tsa.statespace.sarimax import SARIMAX
 
 from tabe.utils.logger import logger
-from tabe.utils.misc_util import EarlyStopping
+from tabe.utils.misc_util import OptimTracker
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 
@@ -156,7 +156,7 @@ class TSLibModel(AbstractModel):
         time_now = time.time()
 
         if self.early_stopping is None :
-            self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True)
+            self.early_stopping = OptimTracker(patience=self.configs.patience, verbose=True)
         else:
             self.early_stopping.reset()
 
@@ -207,7 +207,7 @@ class TSLibModel(AbstractModel):
 
         train_steps = len(train_loader)
         if self.early_stopping is None :
-            self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True)
+            self.early_stopping = OptimTracker(patience=self.configs.patience, verbose=True)
         else:
             self.early_stopping.reset()
 

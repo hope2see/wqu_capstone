@@ -39,8 +39,9 @@ def get_loss_func(loss:str):
 
 #  -----------------------------------------------------
 
-class EarlyStopping:
-    def __init__(self, patience=7, verbose=False, delta=0, save_to_file=True):
+class OptimTracker:
+    def __init__(self, use_early_stop=True, patience=7, verbose=False, delta=0, save_to_file=True):
+        self.use_early_stop = use_early_stop
         self.patience = patience
         self.verbose = verbose
         self.delta = delta
@@ -56,17 +57,19 @@ class EarlyStopping:
             self.best_score = score
             self.save_checkpoint(val_loss, model, path)
         elif score < self.best_score + self.delta:
-            self.counter += 1
-            # logger.debug(f'EarlyStopping counter: {self.counter} out of {self.patience}')
-            if self.counter >= self.patience:
-                logger.debug(f'EarlyStopping early_stop triggered!')
-                self.early_stop = True
-        else:
+            if self.use_early_stop:
+                self.counter += 1
+                # logger.debug(f'EarlyStopping counter: {self.counter} out of {self.patience}')
+                if self.counter >= self.patience:
+                    logger.debug(f'EarlyStopping early_stop triggered!')
+                    self.early_stop = True
+            else:
+                pass
+        else: 
             self.best_score = score
             self.counter = 0
             self.save_checkpoint(val_loss, model, path)
         return self.early_stop
-
 
     def save_checkpoint(self, val_loss, model, path):
         if self.verbose:
@@ -76,7 +79,6 @@ class EarlyStopping:
             torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')
         else:
             self.best_model = model
-
 
     # In order to do 'continous train()', we should keep tracking best_model. 
     # We use one EarlyStopping instance to track best_model while resetting it when needed. 

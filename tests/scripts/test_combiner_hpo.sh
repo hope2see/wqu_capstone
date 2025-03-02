@@ -8,7 +8,7 @@ models_used='S_E_TM'
 # HPO
 etc_desc='yes'
 
-for interval in 1 3 6 9 12 15
+for interval in 1 3 5 10 15
 do
 python -u run.py \
     --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc')' \

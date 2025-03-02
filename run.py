@@ -236,7 +236,7 @@ def _get_parser(model_name=None):
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
     parser.add_argument('--gpm_kernel', type=str, default='Matern32', help='kernel of Gaussian Process [RBF, Matern32, Matern52, Linear, Brownian]')
     parser.add_argument('--gpm_noise', type=float, default=0.1, help='noise for Gaussian Process Kernel [0.0~]')
-    parser.add_argument('--max_gp_opt_steps', type=int, default=1000, 
+    parser.add_argument('--max_gp_opt_steps', type=int, default=2000, 
                         help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
     parser.add_argument('--quantile', type=float, default=0.8, 
                         help="quantile level for the probabilistic prediction in the Adjuster [default: 0.95]")

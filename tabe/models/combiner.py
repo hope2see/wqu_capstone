@@ -20,7 +20,7 @@ from tabe.models.abstractmodel import AbstractModel
 import tabe.utils.report as report
 from tabe.utils.mem_util import MemUtil
 from tabe.utils.logger import logger
-from tabe.utils.misc_util import EarlyStopping
+from tabe.utils.misc_util import OptimTracker
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -148,8 +148,6 @@ class CombinerModel(AbstractModel):
 
 
     def _optimize_HP(self, use_BOA=True, max_evals=100):
-        class _EarlyStopException(Exception):
-            pass
 
         # Objective function (loss function) for hyper-parameter optimization
         # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
@@ -167,10 +165,7 @@ class CombinerModel(AbstractModel):
                 t += 1
             mean_loss = np.mean(losses)
             var_loss = np.var(losses)
-            self.early_stopping(mean_loss, hp_dict)
-            if self.early_stopping.early_stop:
-                self.best_hp = self.early_stopping.best_model
-                raise _EarlyStopException()
+            self.optim_tracker(mean_loss, hp_dict)
 
             return {
                 # TODO : add basemodel_weights 
@@ -183,15 +178,12 @@ class CombinerModel(AbstractModel):
 
         trials = Trials()
         algo = tpe.suggest if use_BOA else rand.suggest
-        self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True, save_to_file=False)
-        try :
-            self.best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
-                       trials=trials, rstate=np.random.default_rng(1), verbose=True)
-        except _EarlyStopException as e:
-            logger.info(f"Early stopped!")
+        self.optim_tracker = OptimTracker(use_early_stop=False, verbose=True, save_to_file=False)
+        self.best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
+                    trials=trials, rstate=np.random.default_rng(1), verbose=True)
             
         spent_time = (time.time() - time_now) 
-        logger.info(f'Combiner._optimize_HP() : {spent_time:.4f}sec elapsed. min_loss={self.early_stopping.val_loss_min}')
+        logger.info(f'Combiner._optimize_HP() : {spent_time:.4f}sec elapsed. min_loss={self.optim_tracker.val_loss_min}')
         report.print_dict(self.best_hp, '[ Combiner HP ]')
 
         return self.best_hp, trials

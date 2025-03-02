@@ -17,7 +17,7 @@ from hyperopt import hp, tpe, rand, fmin, Trials, STATUS_OK
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 from tabe.utils.mem_util import MemUtil
-from tabe.utils.misc_util import logger, EarlyStopping
+from tabe.utils.misc_util import logger, OptimTracker
 import tabe.utils.report as report
 
 smoke_test = "CI" in os.environ  # ignore; used to check code integrity in the Pyro repo
@@ -31,8 +31,8 @@ _mem_util = MemUtil(rss_mem=False, python_mem=False)
 
 class AdjusterModel(AbstractModel):
     # Maximum lookback-window size for fitting gaussian process model
-    MIN_LOOKBACK_WIN = 5
-    MAX_LOOKBACK_WIN = 50
+    MIN_LOOKBACK_WIN = 10
+    MAX_LOOKBACK_WIN = 80
 
     # Period for HPO (HyperParameter Optimization)
     # The most recent period of this length is used for HPO. 
@@ -41,7 +41,11 @@ class AdjusterModel(AbstractModel):
     # the latest input should be used (or added) for HPO. 
     # And, ever-growing input size is not practically acceptable. 
     # Thus, we use fixed-size evaluation period for HPO.
-    MAX_EVAL_PEROID = MAX_LOOKBACK_WIN + 10
+    #
+    # |<-  MAX_LOOKBACK_WIN   ->|<-     HPO_EVAL_PEROID      ->|
+    # [0,1,..              ,t-1][t,t+1,... ,t+hpo_eval_period-1]
+    HPO_EVAL_PEROID = 20 # Probably, the more, the better. But, too mush time cost. 
+    HPO_PERIOD = MAX_LOOKBACK_WIN + HPO_EVAL_PEROID
 
 
     def __init__(self, configs, combiner_model):
@@ -97,14 +101,15 @@ class AdjusterModel(AbstractModel):
         self.optimizer = torch.optim.Adam(gpm.parameters(), lr=0.005)
         self.loss_fn = pyro.infer.Trace_ELBO().differentiable_loss
         
-        early_stopping = EarlyStopping(patience=self.configs.patience, verbose=False, save_to_file=False)
+        optim_tracker = OptimTracker(use_early_stop=False, patience=self.configs.patience, verbose=False, save_to_file=False)
         num_batch = 10
         for step in range(1, self.configs.max_gp_opt_steps, num_batch):
             loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
-            mean_loss = np.mean(loss).item()
-            if early_stopping(mean_loss, None):
+            mean_loss = np.mean(loss).item() / lookback_window_size # mean loss for one-step
+            optim_tracker(mean_loss, None)
+            if optim_tracker.early_stop:
                 break
-        logger.info(f"Adj.HPO: when lb_win_size={lookback_window_size}, after step {step}, loss={mean_loss:.4f}")
+        logger.debug(f"Adj.HPO: when lb_win_size={lookback_window_size}, after training {step} times, loss={mean_loss:.4f}")
         
         return gpm
  
@@ -123,14 +128,15 @@ class AdjusterModel(AbstractModel):
             y = y[-lookback_window_size:]
         gpm.set_data(X, y)
 
-        early_stopping = EarlyStopping(patience=self.configs.patience, verbose=False, save_to_file=False)
+        optim_tracker = OptimTracker(use_early_stop=False, patience=self.configs.patience, verbose=False, save_to_file=False)
         num_batch = 10
         for step in range(1, self.configs.max_gp_opt_steps, num_batch):
             loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
-            mean_loss = np.mean(loss).item()
-            if early_stopping(mean_loss, None):
-                break
-        logger.info(f"Adj.HPO: when lb_win_size={lookback_window_size}, after step {step}, loss={mean_loss:.4f}")
+            mean_loss = np.mean(loss).item() / lookback_window_size # mean loss for one timestep
+            optim_tracker(mean_loss, None)
+            if optim_tracker.early_stop:
+                break                
+        logger.debug(f"Adj.HPO: when lb_win_size={lookback_window_size}, after training  {step} times, loss={mean_loss:.4f}")
 
         return gpm
 
@@ -144,10 +150,10 @@ class AdjusterModel(AbstractModel):
         return exp_deviation, sd
 
 
-    def _optimize_HP(self, use_BOA=False, max_evals=10):
-        class _EarlyStopException(Exception):
-            pass
-
+    def _optimize_HP(self, 
+                     search_alg=0, # 0 : ad-hoc, 1 : BOA, 2 : random
+                     max_evals=10):
+        
         # Objective function (loss function) for hyper-parameter optimization
         # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
         def _evaluate_hp(hp_dict):
@@ -164,14 +170,11 @@ class AdjusterModel(AbstractModel):
                 exp_deviation, _ = self._predict_next(gpm)
                 next_y_hat = self.y_hat_cbm[t] + exp_deviation
                 next_y = self.truths[t]
-                losses.append(np.abs(next_y_hat - next_y))
+                losses.append(np.abs(next_y_hat - next_y)) # MAE!  # Need to use the loss metric of configuration 
                 t += 1
             mean_loss = np.mean(losses)
             var_loss = np.var(losses)
-            self.early_stopping(mean_loss, hp_dict)
-            if self.early_stopping.early_stop:
-                self.best_hp = self.early_stopping.best_model
-                raise _EarlyStopException()
+            self.optim_tracker(mean_loss, hp_dict)
 
             return {
                 'loss': mean_loss,         
@@ -181,19 +184,26 @@ class AdjusterModel(AbstractModel):
 
         time_now = time.time()
 
-        trials = Trials()
-        algo = tpe.suggest if use_BOA else rand.suggest
-        self.early_stopping = EarlyStopping(patience=self.configs.patience, verbose=True, save_to_file=False)
-        try:
+        self.optim_tracker = OptimTracker(use_early_stop=False, patience=self.configs.patience, verbose=True, save_to_file=False)
+        if search_alg == 0 : # Grid-like
+            hp_dict = {'lookback_window_size':0, 'noise':self.configs.gpm_noise}
+            # for w in range(self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN+1, 30):
+            # for w in [80, 50, 30, 10]:
+            for w in [8, 5, 3]:
+                hp_dict['lookback_window_size'] = w
+                _evaluate_hp(hp_dict)
+            trials = None
+            self.best_hp = self.optim_tracker.best_model
+        else: # BOA or Random
+            trials = Trials()
+            algo = tpe.suggest if search_alg == 1 else rand.suggest
             self.best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
-                       trials=trials, rstate=np.random.default_rng(1), verbose=True)
-        except _EarlyStopException as e:
-            logger.info("Early stopped!")
+                    trials=trials, rstate=np.random.default_rng(1), verbose=True)
 
         spent_time = (time.time() - time_now) 
-        logger.info(f'Adjuster._optimize_HP() : {spent_time:.4f}sec elapsed. min_loss={self.early_stopping.val_loss_min}')
-        report.print_dict(self.best_hp, '[ Adjuster HP ]')
 
+        logger.info(f'Adjuster._optimize_HP() : {spent_time:.4f}sec elapsed. min_loss={self.optim_tracker.val_loss_min:.5f}')            
+        report.print_dict(self.best_hp, '[ Adjuster HP ]')
         return self.best_hp, trials
 
 
@@ -213,15 +223,15 @@ class AdjusterModel(AbstractModel):
             y_hat_cbm[t] = y_hat_t
             _mem_util.print_memory_usage()
 
-        eval_peroid = min(self.MAX_EVAL_PEROID, len(train_loader)-1)
-        self.y_hat_cbm = y_hat_cbm[-eval_peroid:]
-        self.truths = y[-eval_peroid:]
+        assert self.HPO_PERIOD <= len(train_loader), 'train peroid is too short for Adjuster HPO!'
+        self.y_hat_cbm = y_hat_cbm[-self.HPO_PERIOD:]
+        self.truths = y[-self.HPO_PERIOD:]
         if self.configs.adaptive_hpo:
-            hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
-            report.plot_hpo_result(trials_boa, "HyperParameter Optimization for Adjuster",
+            self.hp_dict, trials = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
+            if trials is not None:
+                report.plot_hpo_result(trials, "HyperParameter Optimization for Adjuster",
                                 self._get_result_path()+"/hpo_result.pdf")
-            self.hp_dict = hp_boa
-            logger.info(f"Adjuster HPO : lookback_window_size = {hp_boa['lookback_window_size']}")
+            logger.info(f"Adjuster HPO : lookback_window_size = {self.hp_dict['lookback_window_size']}")
         else:
             self.hp_dict = {
                 'lookback_window_size':self.configs.gpm_lookback_win,
@@ -261,12 +271,13 @@ class AdjusterModel(AbstractModel):
         if self.configs.adaptive_hpo:
             self.y_hat_cbm = np.concatenate((self.y_hat_cbm, np.array([y_hat_cbm])))
             self.truths = np.concatenate((self.truths, np.array([y])))
-            if len(self.y_hat_cbm) > self.MAX_EVAL_PEROID: 
-                self.y_hat_cbm = self.y_hat_cbm[-self.MAX_EVAL_PEROID:]
-                self.truths = self.truths[-self.MAX_EVAL_PEROID:]
+            assert self.HPO_PERIOD <= len(self.y_hat_cbm), \
+                        f'length of y({len(self.y_hat_cbm)}) should be longer than HPO_PERIOD({self.HPO_PERIOD})'
+            self.y_hat_cbm = self.y_hat_cbm[-self.HPO_PERIOD:]
+            self.truths = self.truths[-self.HPO_PERIOD:]
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
-                self.hp_dict, _ = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
+                self.hp_dict, _ = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
                 self.hpo_counter = 0                
 
         return y_hat, y_hat_cbm, y_hat_bsm, y_hat_quantile_low, y_hat_quantile_high

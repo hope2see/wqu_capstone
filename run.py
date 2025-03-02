@@ -399,7 +399,7 @@ def run(args=None):
     _mem_util.print_memory_usage()
 
     logger.info('Testing ==================================\n')
-    y, y_hat_adj, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high = adjusterModel.test()
+    y, y_hat_adj, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high, devi_stddev = adjusterModel.test()
     _mem_util.print_memory_usage()
 
     # result reporting -----------------
@@ -427,15 +427,18 @@ def run(args=None):
                 y_hat_bsm[i] = np.exp(y_hat_bsm[i]) - 1
 
         # Simulation with 'Ret'
-        for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell_v1', 'buy_hold_sell_v2']:
-            df_sim_result = pd.DataFrame() 
-            df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy=strategy)
-            df_sim_result['Adjuster_p'] = simulate_trading(y, y_hat_q_low, strategy=strategy)
-            df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy=strategy)
-            for i, bm in enumerate(basemodels):
-                df_sim_result[bm.name] = simulate_trading(y, y_hat_bsm[i], strategy=strategy)
-            df_sim_result.index = ['Acc. ROI', 'Mean ROI', '# Trades', '# Win_Trades', 'Winning Rate']
-            report.report_trading_simulation(df_sim_result, strategy, len(y))
+        for consider_risk in [True, False]:
+            for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell_v1', 'buy_hold_sell_v2']:
+                df_sim_result = pd.DataFrame() 
+                df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy, devi_stddev, consider_risk)
+                df_sim_result['Adjuster_q'] = simulate_trading(y, y_hat_q_low, strategy, devi_stddev, consider_risk)
+                df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy, devi_stddev, consider_risk)
+                for i, bm in enumerate(basemodels):
+                    df_sim_result[bm.name] = simulate_trading(y, y_hat_bsm[i], strategy=strategy)
+                df_sim_result.index = ['Acc. ROI', 'Mean ROI', '# Trades', '# Win_Trades', 'Winning Rate']
+                report.report_trading_simulation(df_sim_result, 
+                                                 strategy+'_r' if consider_risk else strategy, 
+                                                 len(y))
     else:
         logger.info(f"Trading simulation is not performed because target_datatype is {target_datatype}.")
 

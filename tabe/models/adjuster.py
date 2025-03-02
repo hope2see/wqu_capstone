@@ -259,9 +259,6 @@ class AdjusterModel(AbstractModel):
 
         # adjust combinerModel's prediction by adding expected deviation 
         y_hat = y_hat_cbm + pred_deviation
-        z_val = norm.ppf(self.configs.quantile)  # assuming Gaussian distribution
-        y_hat_quantile_low = y_hat - devi_stddev * z_val
-        y_hat_quantile_high = y_hat + devi_stddev * z_val
 
         # calculate the actuall loss of next timestep
         y = batch_y[0, -1, -1] 
@@ -281,7 +278,7 @@ class AdjusterModel(AbstractModel):
                 self.hp_dict, _ = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
                 self.hpo_counter = 0                
 
-        return y_hat, y_hat_cbm, y_hat_bsm, y_hat_quantile_low, y_hat_quantile_high
+        return y_hat, y_hat_cbm, y_hat_bsm, devi_stddev
 
 
     def test(self):
@@ -294,13 +291,18 @@ class AdjusterModel(AbstractModel):
         y_hat_bsm = np.empty((len(self.combiner_model.basemodels), len(y)))
         y_hat_q_low = np.empty_like(y)
         y_hat_q_high = np.empty_like(y)
+        devi_stddev = np.empty_like(y)
 
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
-            y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t], y_hat_q_low[t], y_hat_q_high[t] = \
+            y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t], devi_stddev[t] = \
                 self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, training=True)            
             _mem_util.print_memory_usage()
 
         report.plot_gpmodel(self.gpm, filepath=self._get_result_path()+"/gpmodel_analysis.pdf")
+
+        z_val = norm.ppf(self.configs.quantile) 
+        y_hat_q_low = y_hat - devi_stddev * z_val
+        y_hat_q_high = y_hat + devi_stddev * z_val
 
         if need_to_invert_data:
             n_features = test_set.data_y.shape[1]
@@ -324,4 +326,4 @@ class AdjusterModel(AbstractModel):
                 data_y_hat_bsm[:, -1] = y_hat_bsm[i]
                 y_hat_bsm[i] = test_set.inverse_transform(data_y_hat_bsm)[:, -1]
 
-        return y, y_hat, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high
+        return y, y_hat, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high, devi_stddev

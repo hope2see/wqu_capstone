@@ -120,7 +120,7 @@ def print_configs(configs):
     logger.info("\033[1m" + f"Data {configs.data:<20}" + "\033[0m")
     logger.info(f'  {"Features:":<20}{configs.features:<20}{configs.target:<20}{"Freq:":<20}{configs.freq:<20}')
     if configs.data == 'TABE_ONLINE':
-        logger.info(f'  {"Asset:":<20}{configs.data_asset:<20}'{"interval:":<20}{configs.data_interval:<20})
+        logger.info(f'  {"Asset:":<20}{configs.data_asset:<20}{"interval:":<20}{configs.data_interval:<20}')
         logger.info(f'  {"start_date:":<20}{configs.data_start_date:<20}{"end_date:":<20}{configs.data_end_date:<20}')
     else:
         logger.info(f'  {"Root Path:":<20}{configs.root_path:<20}{"Data Path:":<20}{configs.data_path:<20}')

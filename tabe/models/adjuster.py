@@ -104,7 +104,7 @@ class AdjusterModel(AbstractModel):
         self.optimizer = torch.optim.Adam(gpm.parameters(), lr=0.005)
         self.loss_fn = pyro.infer.Trace_ELBO().differentiable_loss
         
-        optim_tracker = OptimTracker(use_early_stop=False, patience=self.configs.patience, verbose=False, save_to_file=False)
+        optim_tracker = OptimTracker(use_early_stop=True, patience=self.configs.patience, verbose=False, save_to_file=False)
         num_batch = 10
         for step in range(1, self.configs.max_gp_opt_steps, num_batch):
             loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
@@ -131,7 +131,7 @@ class AdjusterModel(AbstractModel):
             y = y[-lookback_window_size:]
         gpm.set_data(X, y)
 
-        optim_tracker = OptimTracker(use_early_stop=False, patience=self.configs.patience, verbose=False, save_to_file=False)
+        optim_tracker = OptimTracker(use_early_stop=True, patience=self.configs.patience, verbose=False, save_to_file=False)
         num_batch = 10
         for step in range(1, self.configs.max_gp_opt_steps, num_batch):
             loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)

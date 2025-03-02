@@ -75,15 +75,22 @@ def _get_parser(model_name=None):
                             help='model name, options: [DLinear, PatchTST, iTransformer, TimeXer, CMamba, TimeMoE, TABE]')
 
         # data loader
-        parser.add_argument('--data', type=str, required=True, default='ETTm1', help='dataset type')
-        parser.add_argument('--root_path', type=str, default='./data/ETT/', help='root path of the data file')
+        parser.add_argument('--data', type=str, required=True, default='TABE', help='dataset type')
+        parser.add_argument('--root_path', type=str, default='./dataset/', help='root path of the data file')
         parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
-        parser.add_argument('--features', type=str, default='M',
+        parser.add_argument('--features', type=str, default='MS',
                             help='forecasting task, options:[M, S, MS]; M:multichannel predict multichannel, S:unichannel predict unichannel, MS:multichannel predict unichannel')
         parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
-        parser.add_argument('--freq', type=str, default='h',
+        parser.add_argument('--freq', type=str, default='d',
                             help='freq for time features encoding, options:[s:secondly, t:minutely, h:hourly, d:daily, b:business days, w:weekly, m:monthly], you can also use more detailed freq like 15min or 3h')
         parser.add_argument('--checkpoints', type=str, default='./checkpoints/', help='location of model checkpoints')
+        parser.add_argument('--data_asset', type=str, default='BTC-USD', help='ticker of asset')
+        parser.add_argument('--data_start_date', type=str, default='2021-01-01', help='start date for the data to download. Used for TABE_ONLINE data')
+        parser.add_argument('--data_end_date', type=str, default='2023-01-01', help='end date for the data to download. Used for TABE_ONLINE data')
+        parser.add_argument('--data_interval', type=str, default='1d', help='interval parameter for downloading')
+        parser.add_argument('--target_datatype', type=str, default='LogRet',
+                            help='value type of target data :[Unknown, Price, Ret, LogRet]')
+        
 
         # forecasting task
         parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -136,10 +143,6 @@ def _get_parser(model_name=None):
         # Adjuster arguments for adding or overriding 
         parser.add_argument('--adjuster', type=lambda s: _model_args(s,'adjuster'), default=None, 
                             help="arguments for the adjuster model [--option1 val1 ...]")
-
-        # For trade simulation 
-        parser.add_argument('--target_datatype', type=str, default='Unknown',
-                            help='time features encoding, options:[Unknown, Price, Ret, LogRet]')
 
     # Addable / Overidable by the model arguments ---------------------
 

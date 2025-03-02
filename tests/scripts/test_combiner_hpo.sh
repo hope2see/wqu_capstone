@@ -8,7 +8,8 @@ models_used='S_E_TM'
 # HPO
 etc_desc='yes'
 
-for interval in 1 3 5 10 15
+# for interval in 1 3 5 10 15
+for interval in 3 5 10 20
 do
 python -u run.py \
     --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc')' \
@@ -29,8 +30,8 @@ python -u run.py \
     --basemodel 'DLinear' \
     --basemodel 'PatchTST' \
     --basemodel 'TimeXer' \
-    --combiner '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 100 --patience 10' \
-    --adjuster '--gpm_lookback_win 10 --gpm_noise 0.1 --max_gp_opt_steps 3000 --quantile 0.8 --gpm_kernel Matern32' 
+    --combiner '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 300 --patience 10' \
+    --adjuster '--gpm_lookback_win 10 --gpm_noise 0.1 --max_gp_opt_steps 3000 --patience 30 --quantile 0.8 --gpm_kernel Matern32' 
 done
 
 

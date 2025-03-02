@@ -108,7 +108,7 @@ class AdjusterModel(AbstractModel):
         num_batch = 10
         for step in range(1, self.configs.max_gp_opt_steps, num_batch):
             loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
-            mean_loss = np.mean(loss).item() / lookback_window_size # mean loss for one-step
+            mean_loss = np.mean(loss).item() / len(y) # mean loss for one-step
             optim_tracker(mean_loss, None)
             if optim_tracker.early_stop:
                 break
@@ -135,7 +135,7 @@ class AdjusterModel(AbstractModel):
         num_batch = 10
         for step in range(1, self.configs.max_gp_opt_steps, num_batch):
             loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
-            mean_loss = np.mean(loss).item() / lookback_window_size # mean loss for one timestep
+            mean_loss = np.mean(loss).item() / len(y) # mean loss for one timestep
             optim_tracker(mean_loss, None)
             if optim_tracker.early_stop:
                 break                
@@ -146,9 +146,9 @@ class AdjusterModel(AbstractModel):
     def _predict_next(self, gpm):
         last_deviation = gpm.y[-1:] 
         with torch.no_grad():
-            exp_deviation, cov = gpm(last_deviation, full_cov=True, noiseless=False)
+            exp_deviation, cov = gpm(last_deviation, full_cov=False, noiseless=False)
         sd = cov.diag().sqrt()  
-        # print(f"Adjuster.proceed_onestep(): exp_dev={exp_deviation.item():.6f}, sd_dev={sd.item():.6f}")
+        logger.info(f"Adjuster._predict_next(): exp_dev={exp_deviation.item():.6f}, sd_dev={sd.item():.6f}")
         return exp_deviation, sd
 
 

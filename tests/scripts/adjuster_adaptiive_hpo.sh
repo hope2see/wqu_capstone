@@ -1,13 +1,16 @@
 export PYTHONPATH=$PYTHONPATH:./Time-Series-Library
 
-test_name='Adj_gpm_knls'
-models_used='all'
+test_name='Adj_ahpo'
+models_used='S_E_TM'
+
+
+# Adaptive HPO
 etc_desc=''
 
-for kernel in RBF Matern32 Matern52 Linear Brownian
-do
+# HPO
+for interval in 3 6 10 20 50 1000; do
 python -u run.py \
-    --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc')' \
+    --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc'_'$interval')' \
     --task_name long_term_forecast --loss 'MAE' --is_training 1 \
     \
     --data TABE_ONLINE --features MS --freq d --num_workers 1 \
@@ -19,6 +22,10 @@ python -u run.py \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
     --basemodel 'TimeMoE' \
-    --adjuster '--patience 30 --gpm_kernel '$kernel 
+    --adjuster '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 20 --patience 30'
+    # --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
+    # --basemodel 'iTransformer' \
+    # --basemodel 'DLinear' \
+    # --basemodel 'PatchTST' \
+    # --basemodel 'TimeXer' \
 done
-

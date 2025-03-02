@@ -1,10 +1,12 @@
 export PYTHONPATH=$PYTHONPATH:./Time-Series-Library
 
-test_name='Adj_gpm_knls'
-models_used='all'
+
+test_name='Cbm_ahpo'
+models_used='S_E_TM'
+
 etc_desc=''
 
-for kernel in RBF Matern32 Matern52 Linear Brownian
+for interval in 3 6 10 20 50 1000
 do
 python -u run.py \
     --model TABE --model_id $test_name'_w_'$models_used'_('$etc_desc')' \
@@ -19,6 +21,12 @@ python -u run.py \
     --basemodel 'SarimaModel' \
     --basemodel 'EtsModel' \
     --basemodel 'TimeMoE' \
-    --adjuster '--patience 30 --gpm_kernel '$kernel 
+    --basemodel 'CMamba --d_model 128 --d_ff 128 --head_dropout 0.1 --channel_mixup --gddmlp --sigma 1.0 --pscan --avg --max --reduction 2' \
+    --basemodel 'iTransformer' \
+    --basemodel 'DLinear' \
+    --basemodel 'PatchTST' \
+    --basemodel 'TimeXer' \
+    --combiner '--adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 300' \
+    --adjuster '--patience 30' 
 done
 

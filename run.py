@@ -229,18 +229,18 @@ def _get_parser(model_name=None):
 
     # Adaptive HPO (for Combiner, Adjuster)
     parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
-    parser.add_argument('--hpo_interval', type=int, default=1, help="interval (timesteps >= 1) for Adaptive HPO")
+    parser.add_argument('--hpo_interval', type=int, default=10, help="interval (timesteps >= 1) for Adaptive HPO")
     parser.add_argument('--max_hpo_eval', type=int, default=100, 
                         help="max number of evaluation for HPO [default: 100]")
 
     # Adjuster
-    parser.add_argument('--gpm_lookback_win', type=int, default=25, 
+    parser.add_argument('--gpm_lookback_win', type=int, default=10, 
                         help="lookback window size for evaluating gaussian process model in the Adjuster [10 ~ 50]"
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
     parser.add_argument('--gpm_kernel', type=str, default='Matern32', help='kernel of Gaussian Process [RBF, Matern32, Matern52, Linear, Brownian]')
     parser.add_argument('--gpm_noise', type=float, default=0.1, help='noise for Gaussian Process Kernel [0.0~]')
-    parser.add_argument('--max_gp_opt_steps', type=int, default=2000, 
-                        help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 2000]")
+    parser.add_argument('--max_gp_opt_steps', type=int, default=5000, 
+                        help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 5000]")
     parser.add_argument('--quantile', type=float, default=0.8, 
                         help="quantile level for the probabilistic prediction in the Adjuster [default: 0.95]")
 

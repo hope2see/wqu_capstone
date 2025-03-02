@@ -73,7 +73,7 @@ class OptimTracker:
 
     def save_checkpoint(self, val_loss, model, path):
         if self.verbose:
-            logger.info(f'loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
+            logger.debug(f'loss decreased ({self.val_loss_min:.6f} --> {val_loss:.6f}).  Saving model ...')
         self.val_loss_min = val_loss
         if self.save_to_file:
             torch.save(model.state_dict(), path + '/' + 'checkpoint.pth')

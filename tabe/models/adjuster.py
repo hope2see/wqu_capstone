@@ -30,9 +30,10 @@ _mem_util = MemUtil(rss_mem=False, python_mem=False)
 
 
 class AdjusterModel(AbstractModel):
-    # Maximum lookback-window size for fitting gaussian process model
-    MIN_LOOKBACK_WIN = 10
-    MAX_LOOKBACK_WIN = 80
+    # lookback-window size for fitting gaussian process model
+    # MIN_LOOKBACK_WIN = 10
+    # MAX_LOOKBACK_WIN = 80
+    UNLIMITED_LOOKBACK_WIN = -1
 
     # Period for HPO (HyperParameter Optimization)
     # The most recent period of this length is used for HPO. 
@@ -45,7 +46,6 @@ class AdjusterModel(AbstractModel):
     # |<-  MAX_LOOKBACK_WIN   ->|<-     HPO_EVAL_PEROID      ->|
     # [0,1,..              ,t-1][t,t+1,... ,t+hpo_eval_period-1]
     HPO_EVAL_PEROID = 20 # Probably, the more, the better. But, too mush time cost. 
-    HPO_PERIOD = MAX_LOOKBACK_WIN + HPO_EVAL_PEROID
 
 
     def __init__(self, configs, combiner_model):
@@ -54,10 +54,14 @@ class AdjusterModel(AbstractModel):
         self._set_gpm_kernel()
         self.gpm = None # Gaussain Process Model 
         self.hp_space = {
-            'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 2),
-            # 'noise': hp.uniform('noise', 0.0, 0.4),
+            'lookback_window_size': hp.choice('lookback_window_size', [5, 10, 30, 50, 100, self.UNLIMITED_LOOKBACK_WIN]), 
+            # 'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 2),
+            # 'noise': hp.uniform('noise', 0.0, 0.4),  # NOTE : noise doesn't seem to effect meaningfully 
         }
-        self.hp_dict = None   # currently active hyper-parameters
+        self.hp_dict = { # currently active hyper-parameters
+            'lookback_window_size':self.configs.gpm_lookback_win,
+            'noise':self.configs.gpm_noise
+            }
         self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
         self.y_hat_cbm = None # the last predictions of combiner. shape = (HPO_EVALUATION_PEROID)
         self.truths = None # the last 'y' values. shape = (HPO_EVALUATION_PEROID)
@@ -89,9 +93,8 @@ class AdjusterModel(AbstractModel):
         pyro.clear_param_store() # NOTE : Need to do everytime? 
 
         lookback_window_size = int(hp_dict['lookback_window_size'])
-        # noise = int(hp_dict['noise'])
-        noise = self.configs.gpm_noise
-        if len(y) > lookback_window_size+1:
+        noise = int(hp_dict['noise'])
+        if lookback_window_size != self.UNLIMITED_LOOKBACK_WIN and len(y) > lookback_window_size+1:
             y = y[-(lookback_window_size+1):]
         X = y[:-1]
         y = y[1:]
@@ -123,7 +126,7 @@ class AdjusterModel(AbstractModel):
         y = torch.cat([gpm.y, y]) # Add new observation to the end of 'y's
 
         lookback_window_size = int(hp_dict['lookback_window_size'])
-        if len(X) > lookback_window_size:
+        if lookback_window_size != self.UNLIMITED_LOOKBACK_WIN and len(y) > lookback_window_size+1:
             X = X[-lookback_window_size:]
             y = y[-lookback_window_size:]
         gpm.set_data(X, y)
@@ -137,7 +140,6 @@ class AdjusterModel(AbstractModel):
             if optim_tracker.early_stop:
                 break                
         logger.debug(f"Adj.HPO: when lb_win_size={lookback_window_size}, after training  {step} times, loss={mean_loss:.4f}")
-
         return gpm
 
 
@@ -158,11 +160,10 @@ class AdjusterModel(AbstractModel):
         # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
         def _evaluate_hp(hp_dict):
             deviations = (self.truths - self.y_hat_cbm)[:-1] # exclude the last one, becuause it is the target to predict
-            assert len(deviations) > self.MAX_LOOKBACK_WIN
-            t = self.MAX_LOOKBACK_WIN # We should start from the same timestep to evaluate the same period.
+            assert len(deviations) > self.HPO_EVAL_PEROID
             gpm = None            
             losses = []
-            while t < len(deviations):
+            for t in range(len(deviations) - self.HPO_EVAL_PEROID, len(deviations)):
                 if gpm is None:
                     gpm = self._train_new_gpmodel(hp_dict, torch.Tensor(deviations[:t]))
                 else:
@@ -189,7 +190,7 @@ class AdjusterModel(AbstractModel):
             hp_dict = {'lookback_window_size':0, 'noise':self.configs.gpm_noise}
             # for w in range(self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN+1, 30):
             # for w in [80, 50, 30, 10]:
-            for w in [8, 5, 3]:
+            for w in [self.UNLIMITED_LOOKBACK_WIN, 100, 50, 10]:
                 hp_dict['lookback_window_size'] = w
                 _evaluate_hp(hp_dict)
             trials = None
@@ -223,9 +224,11 @@ class AdjusterModel(AbstractModel):
             y_hat_cbm[t] = y_hat_t
             _mem_util.print_memory_usage()
 
-        assert self.HPO_PERIOD <= len(train_loader), 'train peroid is too short for Adjuster HPO!'
-        self.y_hat_cbm = y_hat_cbm[-self.HPO_PERIOD:]
-        self.truths = y[-self.HPO_PERIOD:]
+        assert self.HPO_EVAL_PEROID <= len(train_loader), \
+                    f'length of train data ({len(train_loader)}) should be longer than HPO_EVAL_PEROID({self.HPO_EVAL_PEROID})'     
+
+        self.y_hat_cbm = y_hat_cbm
+        self.truths = y
         if self.configs.adaptive_hpo:
             self.hp_dict, trials = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
             if trials is not None:
@@ -271,10 +274,8 @@ class AdjusterModel(AbstractModel):
         if self.configs.adaptive_hpo:
             self.y_hat_cbm = np.concatenate((self.y_hat_cbm, np.array([y_hat_cbm])))
             self.truths = np.concatenate((self.truths, np.array([y])))
-            assert self.HPO_PERIOD <= len(self.y_hat_cbm), \
-                        f'length of y({len(self.y_hat_cbm)}) should be longer than HPO_PERIOD({self.HPO_PERIOD})'
-            self.y_hat_cbm = self.y_hat_cbm[-self.HPO_PERIOD:]
-            self.truths = self.truths[-self.HPO_PERIOD:]
+            self.y_hat_cbm = self.y_hat_cbm
+            self.truths = self.truths
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
                 self.hp_dict, _ = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)

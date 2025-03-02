@@ -184,11 +184,11 @@ class TSLibModel(AbstractModel):
             train_loss = np.average(train_loss)
             vali_loss = self._validate(vali_data, vali_loader)
 
-            logger.info(f"Epoch: {epoch + 1} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f}")
+            logger.debug(f"Epoch: {epoch + 1} | Train Loss: {train_loss:.7f} Vali Loss: {vali_loss:.7f}")
 
             self.early_stopping(vali_loss, self.model, self._get_checkpoint_path())
             if self.early_stopping.early_stop:
-                logger.info("Early stopping")
+                logger.debug("Early stopping")
                 break
 
             adjust_learning_rate(model_optim, epoch + 1, self.configs)

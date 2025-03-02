@@ -49,6 +49,7 @@ class _DefaultHP:
 class CombinerModel(AbstractModel):
 
     # Maximum lookback-window size for computing weights of base models
+    MIN_LOOKBACK_WIN = 1
     MAX_LOOKBACK_WIN = 15 
 
     # Period for HPO (HyperParameter Optimization)
@@ -58,7 +59,10 @@ class CombinerModel(AbstractModel):
     # the latest input should be used (or added) for HPO. 
     # And, ever-growing input size is not practically acceptable. 
     # Thus, we use fixed-size evaluation period for HPO.
-    MAX_HPO_EVAL_PEROID = MAX_LOOKBACK_WIN * 2 
+    # |<-  MAX_LOOKBACK_WIN   ->|<-     HPO_EVAL_PEROID      ->|
+    # [0,1,..              ,t-1][t,t+1,... ,t+hpo_eval_period-1]
+    HPO_EVAL_PEROID = 15 # Probably, the more, the better. But, too mush time cost. 
+    HPO_PERIOD = MAX_LOOKBACK_WIN + HPO_EVAL_PEROID
 
 
     def __init__(self, configs, basemodels):
@@ -66,7 +70,7 @@ class CombinerModel(AbstractModel):
         self.basemodels = basemodels
         self.hp_space = {
             # 'cool_start': hp.quniform('cool_start', 0, num_comps-1, 1),
-            'lookback_window_size': hp.quniform('lookback_window_size', 1, self.MAX_LOOKBACK_WIN, 1),
+            'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 1),
             'max_components': hp.quniform('max_components', 1, len(basemodels), 1),
             'metric': hp.choice('metric', [_Metric.MAE, _Metric.MSE]),
             'weighting_method': hp.choice('weighting_method', 
@@ -209,9 +213,10 @@ class CombinerModel(AbstractModel):
         logger.info(f"CombinerModel.train() : {spent_time:.4f} sec elapsed for getting base models' predictions")
 
         # Hyperparameter Optimization -------------------------------------
-        hpo_peroid = min(self.MAX_HPO_EVAL_PEROID, len(train_loader))
-        self.basemodel_losses = basemodel_losses[:, -hpo_peroid:]
-        self.truths = train_dataset.data_y[-hpo_peroid:, -1]
+        assert self.HPO_PERIOD <= len(train_loader), \
+                    f'length of train data ({len(train_loader)}) should be longer than HPO_PERIOD({self.HPO_PERIOD})'     
+        self.basemodel_losses = basemodel_losses[:, -self.HPO_PERIOD:]
+        self.truths = train_dataset.data_y[-self.HPO_PERIOD:, -1]
         hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
 
         report.plot_hpo_result(trials_boa, "HyperParameter Optimization for Combiner",
@@ -238,9 +243,10 @@ class CombinerModel(AbstractModel):
 
         # Adaptive HPO 
         if self.configs.adaptive_hpo:
-            hpo_peroid = min(self.MAX_HPO_EVAL_PEROID, basemodel_losses.shape[1])
-            self.basemodel_losses = basemodel_losses[:, -hpo_peroid:]
-            self.truths = np.concatenate((self.truths, batch_y[-1:, -1, -1]))[-hpo_peroid:]
+            assert self.HPO_PERIOD <= basemodel_losses.shape[1], \
+                        f'length of basemodel data ({basemodel_losses.shape[1]}) should be longer than HPO_PERIOD({self.HPO_PERIOD})'            
+            self.basemodel_losses = basemodel_losses[:, -self.HPO_PERIOD:]
+            self.truths = np.concatenate((self.truths, batch_y[-1:, -1, -1]))[-self.HPO_PERIOD:]
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
                 self.hp_dict, _ = self._optimize_HP(max_evals=self.configs.max_hpo_eval)

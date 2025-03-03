@@ -264,7 +264,7 @@ class AdjusterModel(AbstractModel):
         # Apply relative credibility ratio
         # Relative Credibility Ratio [0,..,1.0]
         # : 1 / (1 + exp(alpha*(loss_A - loss_B)))
-        eval_period = min(len(self.y_hat), 5)
+        eval_period = min(len(self.y_hat), self.configs.adj_eval_win)
         if eval_period == 0: 
             my_credibility = 0.5 # moderate
         else:
@@ -276,7 +276,7 @@ class AdjusterModel(AbstractModel):
 
         y_hat = y_hat_cbm + pred_deviation.item()
                      
-        use_choice_policy = False 
+        use_choice_policy = False # TODO ! 
         if use_choice_policy: 
             final_pred = y_hat if my_credibility > 0.5 else y_hat_cbm
         else: # mix the prediction 

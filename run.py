@@ -238,7 +238,7 @@ def _get_parser(model_name=None):
     # Adaptive HPO (for Combiner, Adjuster)
     parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
     parser.add_argument('--hpo_interval', type=int, default=10, help="interval (timesteps >= 1) for Adaptive HPO")
-    parser.add_argument('--max_hpo_eval', type=int, default=100, 
+    parser.add_argument('--max_hpo_eval', type=int, default=200, 
                         help="max number of evaluation for HPO [default: 100]")
 
     # Adjuster
@@ -254,8 +254,8 @@ def _get_parser(model_name=None):
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
     parser.add_argument('--gpm_cred_factor', type=int, default=10, 
                         help="relative credibility scaling factor [default: 1000]")
-    parser.add_argument('--quantile', type=float, default=0.8, 
-                        help="quantile level for the probabilistic prediction in the Adjuster [default: 0.95]")
+    parser.add_argument('--quantile', type=float, default=0.975, 
+                        help="quantile level for the probabilistic prediction in the Adjuster [default: 0.975]")
 
     # If model_name is given, then all the default arguments are suppressed, and only explicitly given arguments are included
     if model_name is not None:

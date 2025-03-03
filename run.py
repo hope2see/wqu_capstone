@@ -249,7 +249,7 @@ def _get_parser(model_name=None):
     parser.add_argument('--gpm_noise', type=float, default=0.1, help='noise for Gaussian Process Kernel [0.0~]')
     parser.add_argument('--max_gp_opt_steps', type=int, default=5000, 
                         help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 5000]")
-    parser.add_argument('--adj_eval_win', type=int, default=5, 
+    parser.add_argument('--adj_eval_win', type=int, default=3, 
                         help="Size of window to evaluate loss when adjusting combiner prediction in the Adjuster]"
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
     parser.add_argument('--gpm_cred_factor', type=int, default=10, 

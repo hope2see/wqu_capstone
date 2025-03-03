@@ -411,6 +411,18 @@ def run(args=None):
 
     report.report_classifier_performance(y, y_hat_adj, y_hat_cbm, y_hat_bsm, basemodels)
 
+    # save forecast result
+    df_fcst_result = pd.DataFrame() 
+    df_fcst_result['Truths'] = y
+    df_fcst_result['Adjuster'] = y_hat_adj
+    df_fcst_result[f'Adjuster_q_low_{configs.quantile}'] = y_hat_q_low
+    df_fcst_result[f'Adjuster_q_high_{configs.quantile}'] = y_hat_q_high
+    df_fcst_result['Adjuster_devi_sd'] = devi_stddev
+    df_fcst_result['Combiner'] = y_hat_cbm
+    for i, bm in enumerate(basemodels):
+        df_fcst_result[bm.name] = y_hat_bsm[i]
+    df_fcst_result.to_csv(path_or_buf=result_dir + "/forecast_results.csv", index=False)
+
     # Trading Simulations ---------------
 
     # Convert data to 'Ret'

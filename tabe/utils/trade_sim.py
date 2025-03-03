@@ -46,7 +46,7 @@ def _simulate_trading_buy_hold_sell(true_rets, pred_rets, buy_threshold, buy_thr
             buy_condition_met = (pred_rets[t] > buy_threshold)
             if apply_threshold_prob:
                 # buy_condition_met = buy_condition_met and _pred_is_believable(devi_stddev[t])
-                buy_condition_met = buy_condition_met and (buy_threshold_q >= buy_threshold)
+                buy_condition_met = buy_condition_met and (buy_threshold_q[t] >= buy_threshold)
             if buy_condition_met: # buy 
                 orig_balance = balance
                 balance -= balance * fee_rate

@@ -91,6 +91,14 @@ def _get_parser(model_name=None):
         parser.add_argument('--target_datatype', type=str, default='LogRet',
                             help='value type of target data :[Unknown, Price, Ret, LogRet]')
         
+        # trading simulation 
+        # parser.add_argument('--buy_fee', type=float, default=0.001, help='')
+        # parser.add_argument('--sell_fee', type=float, default=0.001, help='')
+        parser.add_argument('--fee_rate', type=float, default=0.001, help='')
+        parser.add_argument('--buy_threshold_ret', type=float, default=0.002, 
+                            help='The threshold of model\'s predicted return to buy [0.0 ~ 1.0]')
+        parser.add_argument('--buy_threshold_prob', type=float, default=0.6, 
+                            help='The threshold of model\'s estimated probability for the predicted_return to be over buy_threshold_ret [0.0 ~ 1.0]')
 
         # forecasting task
         parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
@@ -241,6 +249,8 @@ def _get_parser(model_name=None):
     parser.add_argument('--gpm_noise', type=float, default=0.1, help='noise for Gaussian Process Kernel [0.0~]')
     parser.add_argument('--max_gp_opt_steps', type=int, default=5000, 
                         help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 5000]")
+    parser.add_argument('--gpm_cred_factor', type=int, default=10, 
+                        help="relative credibility scaling factor [default: 1000]")
     parser.add_argument('--quantile', type=float, default=0.8, 
                         help="quantile level for the probabilistic prediction in the Adjuster [default: 0.95]")
 
@@ -399,7 +409,7 @@ def run(args=None):
     _mem_util.print_memory_usage()
 
     logger.info('Testing ==================================\n')
-    y, y_hat_adj, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high, devi_stddev = adjusterModel.test()
+    y, y_hat_adj, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high, buy_threshold_q, devi_stddev = adjusterModel.test()
     _mem_util.print_memory_usage()
 
     # result reporting -----------------
@@ -439,17 +449,22 @@ def run(args=None):
                 y_hat_bsm[i] = np.exp(y_hat_bsm[i]) - 1
 
         # Simulation with 'Ret'
-        for consider_risk in [True, False]:
+        # for consider_risk in [True, False]:
+        for apply_threshold_prob in [True, False]:
             for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell_v1', 'buy_hold_sell_v2']:
                 df_sim_result = pd.DataFrame() 
-                df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy, devi_stddev, consider_risk)
-                df_sim_result['Adjuster_q'] = simulate_trading(y, y_hat_q_low, strategy, devi_stddev, consider_risk)
-                df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy, devi_stddev, consider_risk)
+                df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy, devi_stddev, apply_threshold_prob, 
+                                                             buy_threshold=configs.buy_threshold_ret, buy_threshold_q=buy_threshold_q, fee_rate=configs.fee_rate)
+                df_sim_result['Adjuster_q'] = simulate_trading(y, y_hat_q_low, strategy, devi_stddev, apply_threshold_prob,
+                                                             buy_threshold=configs.buy_threshold_ret, buy_threshold_q=buy_threshold_q, fee_rate=configs.fee_rate)
+                df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy, devi_stddev, apply_threshold_prob,
+                                                             buy_threshold=configs.buy_threshold_ret, buy_threshold_q=buy_threshold_q, fee_rate=configs.fee_rate)
                 for i, bm in enumerate(basemodels):
-                    df_sim_result[bm.name] = simulate_trading(y, y_hat_bsm[i], strategy=strategy)
+                    df_sim_result[bm.name] = simulate_trading(y, y_hat_bsm[i], strategy=strategy,
+                                                             buy_threshold=configs.buy_threshold_ret, buy_threshold_q=buy_threshold_q, fee_rate=configs.fee_rate)
                 df_sim_result.index = ['Acc. ROI', 'Mean ROI', '# Trades', '# Win_Trades', 'Winning Rate']
                 report.report_trading_simulation(df_sim_result, 
-                                                 strategy+'_r' if consider_risk else strategy, 
+                                                 strategy+'_prob' if apply_threshold_prob else strategy, 
                                                  len(y))
     else:
         logger.info(f"Trading simulation is not performed because target_datatype is {target_datatype}.")

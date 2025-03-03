@@ -91,7 +91,7 @@ class TSLibModel(AbstractModel):
 
     def load_saved_model(self):
         path = self._get_checkpoint_path() + '/checkpoint.pth'
-        logger.info(f'loading saved model from {path}')
+        logger.debug(f'loading saved model from {path}')
         self.model.load_state_dict(torch.load(path))
 
     def _forward_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark):
@@ -193,7 +193,7 @@ class TSLibModel(AbstractModel):
 
             adjust_learning_rate(model_optim, epoch + 1, self.configs)
 
-        logger.info(f"_train_batch_with_validation: cost time: {time.time() - time_now:.3f}sec")
+        logger.debug(f"_train_batch_with_validation: cost time: {time.time() - time_now:.3f}sec")
 
         # load the best model found
         self.load_saved_model() 
@@ -230,10 +230,10 @@ class TSLibModel(AbstractModel):
                 train_loss.append(loss.item())
 
                 if (i + 1) % 100 == 0:
-                    logger.info("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
+                    logger.debug("\titers: {0}, epoch: {1} | loss: {2:.7f}".format(i + 1, epoch + 1, loss.item()))
                     speed = (time.time() - time_now) / iter_count
                     left_time = speed * ((self.configs.train_epochs - epoch) * train_steps - i)
-                    logger.info('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
+                    logger.debug('\tspeed: {:.4f}s/iter; left time: {:.4f}s'.format(speed, left_time))
                     iter_count = 0
                     time_now = time.time()
 
@@ -247,11 +247,11 @@ class TSLibModel(AbstractModel):
 
             train_loss = np.average(train_loss)
             vali_loss = self._validate(vali_data, vali_loader)
-            logger.info(f"Epoch {epoch+1}, Train Loss: {train_loss:.6f} Vali Loss: {vali_loss:.6f}, Spent Time: {time.time() - epoch_time:.6f}")
+            logger.debug(f"Epoch {epoch+1}, Train Loss: {train_loss:.6f} Vali Loss: {vali_loss:.6f}, Spent Time: {time.time() - epoch_time:.6f}")
 
             self.early_stopping(vali_loss, self.model, self._get_checkpoint_path())
             if self.early_stopping.early_stop:
-                logger.info("Early stopping")
+                logger.debug("Early stopping")
                 break
 
             adjust_learning_rate(model_optim, epoch + 1, self.configs)

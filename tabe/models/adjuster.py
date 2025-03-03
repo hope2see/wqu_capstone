@@ -14,6 +14,8 @@ import pyro.contrib.gp as gp
 
 from hyperopt import hp, tpe, rand, fmin, Trials, STATUS_OK
 
+from utils.metrics import MAE, MSE, RMSE, MAPE, MSPE
+
 from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 from tabe.utils.mem_util import MemUtil
@@ -65,6 +67,7 @@ class AdjusterModel(AbstractModel):
         self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
         self.y_hat_cbm = None # the last predictions of combiner. shape = (HPO_EVALUATION_PEROID)
         self.truths = None # the last 'y' values. shape = (HPO_EVALUATION_PEROID)
+        self.y_hat = np.array([])
 
 
     def _set_gpm_kernel(self):
@@ -229,6 +232,7 @@ class AdjusterModel(AbstractModel):
 
         self.y_hat_cbm = y_hat_cbm
         self.truths = y
+
         if self.configs.adaptive_hpo:
             self.hp_dict, trials = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
             if trials is not None:
@@ -256,12 +260,35 @@ class AdjusterModel(AbstractModel):
         # get combiner model's predition
         y_hat_cbm, y_hat_bsm = self.combiner_model.proceed_onestep(
             batch_x, batch_y, batch_x_mark, batch_y_mark, training)                
+        
+        # Apply relative credibility ratio
+        # Relative Credibility Ratio [0,..,1.0]
+        # : 1 / (1 + exp(alpha*(loss_A - loss_B)))
+        eval_period = min(len(self.y_hat), 5)
+        if eval_period == 0: 
+            my_credibility = 0.5 # moderate
+        else:
+            my_loss = MAE(self.y_hat[-eval_period:], self.truths[-eval_period:])
+            cbm_loss = MAE(self.y_hat_cbm[-eval_period:], self.truths[-eval_period:])
+            alpha = self.configs.gpm_cred_factor # NOTE : Fine tune! 
+            my_credibility = 1.0 / (1.0 + np.exp(alpha * (my_loss - cbm_loss)))
+            logger.info(f'Adj.predict : my_loss={my_loss:.5f}, cbm_loss={cbm_loss:.5f}, my_credibility={my_credibility:.5f}')
 
-        # adjust combinerModel's prediction by adding expected deviation 
-        y_hat = y_hat_cbm + pred_deviation
+        y_hat = y_hat_cbm + pred_deviation.item()
+                     
+        use_choice_policy = False 
+        if use_choice_policy: 
+            final_pred = y_hat if my_credibility > 0.5 else y_hat_cbm
+        else: # mix the prediction 
+            # adjust combinerModel's prediction by adding expected deviation 
+            final_pred = y_hat_cbm + (pred_deviation.item() * my_credibility)
 
         # calculate the actuall loss of next timestep
         y = batch_y[0, -1, -1] 
+
+        self.y_hat_cbm = np.concatenate((self.y_hat_cbm, np.array([y_hat_cbm])))
+        self.y_hat = np.concatenate((self.y_hat, np.array([y_hat])))
+        self.truths = np.concatenate((self.truths, np.array([y])))
 
         if training:
             true_deviation = torch.tensor([y.item() - y_hat_cbm])
@@ -269,16 +296,13 @@ class AdjusterModel(AbstractModel):
 
         # Adaptive HPO 
         if self.configs.adaptive_hpo:
-            self.y_hat_cbm = np.concatenate((self.y_hat_cbm, np.array([y_hat_cbm])))
-            self.truths = np.concatenate((self.truths, np.array([y])))
-            self.y_hat_cbm = self.y_hat_cbm
-            self.truths = self.truths
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
                 self.hp_dict, _ = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
                 self.hpo_counter = 0                
 
-        return y_hat, y_hat_cbm, y_hat_bsm, devi_stddev
+        logger.info(f'Adj.predict : final_pred={final_pred:.5f}, my_credibility={my_credibility:.5f}, y_hat={y_hat:.5f}, y_hat_cbm={y_hat_cbm:.5f}')
+        return final_pred, y_hat, y_hat_cbm, y_hat_bsm, devi_stddev
 
 
     def test(self):
@@ -286,6 +310,7 @@ class AdjusterModel(AbstractModel):
         y = test_set.data_y[self.configs.seq_len:, -1]
         need_to_invert_data = True if (test_set.scale and self.configs.inverse) else False
 
+        final_pred = np.empty_like(y)
         y_hat = np.empty_like(y)
         y_hat_cbm = np.empty_like(y)
         y_hat_bsm = np.empty((len(self.combiner_model.basemodels), len(y)))
@@ -294,9 +319,9 @@ class AdjusterModel(AbstractModel):
         devi_stddev = np.empty_like(y)
 
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
-            y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t], devi_stddev[t] = \
+            final_pred[t], y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t], devi_stddev[t] = \
                 self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, training=True)            
-            _mem_util.print_memory_usage()
+            # _mem_util.print_memory_usage()
 
         report.plot_gpmodel(self.gpm, filepath=self._get_result_path()+"/gpmodel_analysis.pdf")
 
@@ -304,26 +329,32 @@ class AdjusterModel(AbstractModel):
         y_hat_q_low = y_hat - devi_stddev * z_val
         y_hat_q_high = y_hat + devi_stddev * z_val
 
+        z_val = norm.ppf(self.configs.buy_threshold_prob) 
+        buy_threshold_q = y_hat - devi_stddev * z_val
+
         if need_to_invert_data:
             n_features = test_set.data_y.shape[1]
             data_y = np.zeros((len(y), n_features))
-            data_y_hat = np.zeros((len(y), n_features))
+            data_final_pred = np.zeros((len(y), n_features))
             data_y_hat_q_low = np.zeros((len(y), n_features))
             data_y_hat_q_high = np.zeros((len(y), n_features))
+            data_buy_threshold_q = np.zeros((len(y), n_features))
             data_y_hat_cbm = np.zeros((len(y), n_features))
             data_y[:, -1] = y
-            data_y_hat[:, -1] = y_hat
+            data_final_pred[:, -1] = final_pred
             data_y_hat_q_low[:, -1] = y_hat_q_low
             data_y_hat_q_high[:, -1] = y_hat_q_high
+            data_buy_threshold_q[:, -1] = buy_threshold_q
             data_y_hat_cbm[:, -1] = y_hat_cbm
             y = test_set.inverse_transform(data_y)[:, -1]
-            y_hat = test_set.inverse_transform(data_y_hat)[:, -1]
+            final_pred = test_set.inverse_transform(data_final_pred)[:, -1]
             y_hat_q_low = test_set.inverse_transform(data_y_hat_q_low)[:, -1]
             y_hat_q_high = test_set.inverse_transform(data_y_hat_q_high)[:, -1]
+            buy_threshold_q = test_set.inverse_transform(data_buy_threshold_q)[:, -1]
             y_hat_cbm = test_set.inverse_transform(data_y_hat_cbm)[:, -1]
             for i in range(len(y_hat_bsm)):
                 data_y_hat_bsm = np.zeros((len(y), n_features))
                 data_y_hat_bsm[:, -1] = y_hat_bsm[i]
                 y_hat_bsm[i] = test_set.inverse_transform(data_y_hat_bsm)[:, -1]
 
-        return y, y_hat, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high, devi_stddev
+        return y, final_pred, y_hat_cbm, y_hat_bsm, y_hat_q_low, y_hat_q_high, buy_threshold_q, devi_stddev

@@ -125,7 +125,7 @@ def _stock_data_gen(
 # So, we moved validation_period to the first part of dataset. 
 # [validateion_set (20%) | train_set (50%) | ensemble_train_set (20%) | test_set (10%)]
 #
-class Dataset_TABE(Dataset):
+class Dataset_TABE_File(Dataset):
     def __init__(self, args, 
                  root_path, flag='base_train', size=None,
                  features='S', data_path='ETTh1.csv',
@@ -233,7 +233,7 @@ class Dataset_TABE(Dataset):
         return self.scaler.inverse_transform(data)
 
 
-class Dataset_TABE_Online(Dataset_TABE):
+class Dataset_TABE_Online(Dataset_TABE_File):
     def __init__(self, args, root_path=None, flag='base_train', size=None,
                  features='S', data_path=None,
                  target='OT', scale=True, timeenc=0, freq='h', seasonal_patterns=None):        

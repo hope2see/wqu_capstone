@@ -4,7 +4,7 @@ import pandas as pd
 from utils.timefeatures import time_features
 from torch.utils.data import Dataset, DataLoader
 from tabe.utils.misc_util import logger
-from tabe.data_provider.dataset_tabe import Dataset_TABE, Dataset_TABE_Online
+from tabe.data_provider.dataset_tabe import Dataset_TABE_File, Dataset_TABE_Online
 
 import warnings
 warnings.filterwarnings('ignore')
@@ -24,7 +24,7 @@ data_dict = {
     # 'SMD': SMDSegLoader,
     # 'SWAT': SWATSegLoader,
     # 'UEA': UEAloader,
-    'TABE': Dataset_TABE,
+    'TABE_FILE': Dataset_TABE_File,
     'TABE_ONLINE': Dataset_TABE_Online,
 }
 

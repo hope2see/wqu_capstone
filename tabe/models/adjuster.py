@@ -3,6 +3,7 @@
 # ref) https://pyro.ai/examples/gp.html
 
 import os
+import io 
 import time
 import numpy as np
 import torch
@@ -20,6 +21,7 @@ from tabe.data_provider.dataset_loader import get_data_provider
 from tabe.models.abstractmodel import AbstractModel
 from tabe.utils.mem_util import MemUtil
 from tabe.utils.misc_util import logger, OptimTracker
+import tabe.utils.weighting as weighting
 import tabe.utils.report as report
 
 smoke_test = "CI" in os.environ  # ignore; used to check code integrity in the Pyro repo
@@ -68,6 +70,7 @@ class AdjusterModel(AbstractModel):
         self.y_hat_cbm = None # the last predictions of combiner. shape = (HPO_EVALUATION_PEROID)
         self.truths = None # the last 'y' values. shape = (HPO_EVALUATION_PEROID)
         self.y_hat = np.array([])
+        self.credibility = 0.5 # relative credibility against combiner model. Initially neutral value 0.5
 
 
     def _set_gpm_kernel(self):
@@ -261,27 +264,39 @@ class AdjusterModel(AbstractModel):
         y_hat_cbm, y_hat_bsm = self.combiner_model.proceed_onestep(
             batch_x, batch_y, batch_x_mark, batch_y_mark, training)                
         
-        # Apply relative credibility ratio
-        # Relative Credibility Ratio [0,..,1.0]
-        # : 1 / (1 + exp(alpha*(loss_A - loss_B)))
+        # Apply relative_credibility ---------------------------------------
+        # Relative Credibility Ratio : value range = (0,..,1.0)
+        # Model A's Credibilty over model B =  1 / (1 + exp( alpha * (La-Lb) / ((La+Lb)/2 + epsilon) ) )
+        #   La, Lb : Loss of model A, Loss of model B 
+        #   alpha : tuning (scaling) factor 
+        #   epsilon : tiny value to prevent divide-by-zero 
         eval_period = min(len(self.y_hat), self.configs.adj_eval_win)
-        if eval_period == 0: 
-            my_credibility = 0.5 # moderate
-        else:
-            my_loss = MAE(self.y_hat[-eval_period:], self.truths[-eval_period:])
-            cbm_loss = MAE(self.y_hat_cbm[-eval_period:], self.truths[-eval_period:])
-            alpha = self.configs.gpm_cred_factor # NOTE : Fine tune! 
-            my_credibility = 1.0 / (1.0 + np.exp(alpha * (my_loss - cbm_loss)))
-            logger.info(f'Adj.predict : my_loss={my_loss:.5f}, cbm_loss={cbm_loss:.5f}, my_credibility={my_credibility:.5f}')
+        if eval_period > 0:
+            # la = MAE(self.y_hat[-eval_period:], self.truths[-eval_period:])   
+            # lc = MAE(self.y_hat_cbm[-eval_period:], self.truths[-eval_period:])
+            # alpha = self.configs.adj_cred_factor # TODO : Fine tune! 
+            # pct_loss_diff = (la - lc) / ((la + lc)/2.0 + 1e-6)
+            # adjuster_credibility = 1.0 / (1.0 + np.exp(alpha * pct_loss_diff))
+            my_loss = np.abs(self.y_hat[-eval_period:] - self.truths[-eval_period:])   
+            cbm_loss = np.abs(self.y_hat_cbm[-eval_period:] - self.truths[-eval_period:])
+            model_losses = np.array([my_loss, cbm_loss])
+            prev_weights = np.array([self.credibility, 1.0-self.credibility])
+            weights = weighting.compute_model_weights(model_losses, prev_weights, eval_period, 
+                                    softmax_scaling_factor=self.configs.adj_cred_factor, discount_factor=1.2)
+            self.credibility = weights[0]
+
+            logger.info("Adj.predict : Adj Losses : " + "[" + ", ".join(f'{l:.5f}' for l in my_loss) + "]")
+            logger.info("Adj.predict : Cbm Losses : " + "[" + ", ".join(f'{l:.5f}' for l in cbm_loss) + "]")
+            logger.info(f'Adj.predict : adjuster_credibility = {self.credibility:.5f}')
 
         y_hat = y_hat_cbm + pred_deviation.item()
                      
         use_choice_policy = False # TODO ! 
         if use_choice_policy: 
-            final_pred = y_hat if my_credibility > 0.5 else y_hat_cbm
+            final_pred = y_hat if self.credibility > 0.5 else y_hat_cbm
         else: # mix the prediction 
             # adjust combinerModel's prediction by adding expected deviation 
-            final_pred = y_hat_cbm + (pred_deviation.item() * my_credibility)
+            final_pred = y_hat_cbm + (pred_deviation.item() * self.credibility)
 
         # calculate the actuall loss of next timestep
         y = batch_y[0, -1, -1] 
@@ -301,7 +316,7 @@ class AdjusterModel(AbstractModel):
                 self.hp_dict, _ = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
                 self.hpo_counter = 0                
 
-        logger.info(f'Adj.predict : final_pred={final_pred:.5f}, my_credibility={my_credibility:.5f}, y_hat={y_hat:.5f}, y_hat_cbm={y_hat_cbm:.5f}')
+        # logger.info(f'Adj.predict : final_pred={final_pred:.5f}, y_hat={y_hat:.5f}, y_hat_cbm={y_hat_cbm:.5f}')
         return final_pred, y_hat, y_hat_cbm, y_hat_bsm, devi_stddev
 
 
@@ -321,7 +336,7 @@ class AdjusterModel(AbstractModel):
         for t, (batch_x, batch_y, batch_x_mark, batch_y_mark) in enumerate(test_loader):
             final_pred[t], y_hat[t], y_hat_cbm[t], y_hat_bsm[:,t], devi_stddev[t] = \
                 self.proceed_onestep(batch_x, batch_y, batch_x_mark, batch_y_mark, training=True)            
-            # _mem_util.print_memory_usage()
+            _mem_util.print_memory_usage()
 
         report.plot_gpmodel(self.gpm, filepath=self._get_result_path()+"/gpmodel_analysis.pdf")
 

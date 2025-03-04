@@ -21,7 +21,7 @@ from cmamba.models import CMamba
 
 # TABE 
 from tabe.models.abstractmodel import AbstractModel
-from tabe.models.basemodels import StatisticalModel, EtsModel, SarimaModel, TSLibModel
+from tabe.models.basemodels import StatisticalModel, EtsModel, SarimaModel, TSLibModel, DrifterModel, NoiseModel
 from tabe.models.timemoe import TimeMoE
 from tabe.models.combiner import CombinerModel
 from tabe.models.adjuster import AdjusterModel
@@ -67,17 +67,17 @@ def _get_parser(model_name=None):
     if model_name is None: 
 
         # basic config
-        parser.add_argument('--task_name', type=str, required=True, default='long_term_forecast',
+        parser.add_argument('--task_name', type=str, required=False, default='long_term_forecast',
                             help='task name, options:[long_term_forecast, short_term_forecast, imputation, classification, anomaly_detection]')
-        parser.add_argument('--is_training', type=int, required=True, default=1, help='status')
+        parser.add_argument('--is_training', type=int, required=False, default=1, help='status')
         parser.add_argument('--model_id', type=str, required=True, default='test', help='model id')
         parser.add_argument('--model', type=str, required=True, default='TABE',
                             help='model name, options: [DLinear, PatchTST, iTransformer, TimeXer, CMamba, TimeMoE, TABE]')
 
         # data loader
-        parser.add_argument('--data', type=str, required=True, default='TABE', help='dataset type')
+        parser.add_argument('--data', type=str, required=True, default='TABE_FILE', help='dataset type')
         parser.add_argument('--root_path', type=str, default='./dataset/', help='root path of the data file')
-        parser.add_argument('--data_path', type=str, default='ETTh1.csv', help='data file')
+        parser.add_argument('--data_path', type=str, default='BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv', help='data file')
         parser.add_argument('--features', type=str, default='MS',
                             help='forecasting task, options:[M, S, MS]; M:multichannel predict multichannel, S:unichannel predict unichannel, MS:multichannel predict unichannel')
         parser.add_argument('--target', type=str, default='OT', help='target feature in S or MS task')
@@ -101,13 +101,13 @@ def _get_parser(model_name=None):
                             help='The threshold of model\'s estimated probability for the predicted_return to be over buy_threshold_ret [0.0 ~ 1.0]')
 
         # forecasting task
-        parser.add_argument('--seq_len', type=int, default=96, help='input sequence length')
-        parser.add_argument('--label_len', type=int, default=48, help='start token length')
-        parser.add_argument('--pred_len', type=int, default=96, help='prediction sequence length')
-        parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4')
+        parser.add_argument('--seq_len', type=int, default=32, help='input sequence length')
+        parser.add_argument('--label_len', type=int, default=32, help='start token length')
+        parser.add_argument('--pred_len', type=int, default=1, help='prediction sequence length')
         parser.add_argument('--inverse', action='store_true', help='inverse output data', default=False)
+        parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4') # used only for M4 dataset
 
-        # inputation task
+        # imputation task
         parser.add_argument('--mask_rate', type=float, default=0.25, help='mask ratio')
 
         # anomaly detection task
@@ -141,8 +141,12 @@ def _get_parser(model_name=None):
         parser.add_argument('--use_gpu', type=bool, default=True, help='use gpu')
         parser.add_argument('--gpu', type=int, default=0, help='gpu')
         parser.add_argument('--gpu_type', type=str, default='cuda', help='gpu type')  # cuda or mps
-        parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False)
+        parser.add_argument('--use_multi_gpu', action='store_true', help='use multiple gpus', default=False) # not working well
         parser.add_argument('--devices', type=str, default='0,1,2,3', help='device ids of multile gpus')
+
+        # basemodel arguments for adding to (or overriding) the common arguments
+        parser.add_argument('--basemodel', action='append', type=_basemodel_args, default=[], 
+                            help="name and arguments for a base model to be inlcuded in the combiner model [name --option1 val1 ...]")
 
         # Combiner arguments for adding or overriding 
         parser.add_argument('--combiner', type=lambda s: _model_args(s,'combiner'), default=None, 
@@ -155,14 +159,14 @@ def _get_parser(model_name=None):
     # Addable / Overidable by the model arguments ---------------------
 
     # optimization
-    parser.add_argument('--num_workers', type=int, default=10, help='data loader num workers')
+    parser.add_argument('--num_workers', type=int, default=1, help='data loader num workers')
     parser.add_argument('--itr', type=int, default=1, help='experiments times')
     parser.add_argument('--train_epochs', type=int, default=10, help='train epochs')
     parser.add_argument('--batch_size', type=int, default=32, help='batch size of train input data')
     parser.add_argument('--patience', type=int, default=3, help='early stopping patience')
     parser.add_argument('--learning_rate', type=float, default=0.0001, help='optimizer learning rate')
     parser.add_argument('--des', type=str, default='test', help='exp description') # NOTE : for what?  
-    parser.add_argument('--loss', type=str, default='MSE', help='loss function')
+    parser.add_argument('--loss', type=str, default='MAE', help='loss function')
     parser.add_argument('--lradj', type=str, default='type1', help='adjust learning rate')
     parser.add_argument('--use_amp', action='store_true', help='use automatic mixed precision training', default=False)
 
@@ -178,16 +182,16 @@ def _get_parser(model_name=None):
     # common model define
     parser.add_argument('--top_k', type=int, default=5, help='for TimesBlock')
     parser.add_argument('--num_kernels', type=int, default=6, help='for Inception')
-    parser.add_argument('--enc_in', type=int, default=7, help='encoder input size')
-    parser.add_argument('--dec_in', type=int, default=7, help='decoder input size')
-    parser.add_argument('--c_out', type=int, default=7, help='output size')
+    parser.add_argument('--enc_in', type=int, default=1, help='encoder input size')
+    parser.add_argument('--dec_in', type=int, default=1, help='decoder input size')
+    parser.add_argument('--c_out', type=int, default=1, help='output size')
     parser.add_argument('--d_model', type=int, default=512, help='dimension of model')
     parser.add_argument('--n_heads', type=int, default=8, help='num of heads')
     parser.add_argument('--e_layers', type=int, default=2, help='num of encoder layers')
     parser.add_argument('--d_layers', type=int, default=1, help='num of decoder layers')
     parser.add_argument('--d_ff', type=int, default=2048, help='dimension of fcn')
     parser.add_argument('--moving_avg', type=int, default=25, help='window size of moving average')
-    parser.add_argument('--factor', type=int, default=1, help='attn factor')
+    parser.add_argument('--factor', type=int, default=3, help='attn factor')
     parser.add_argument('--distil', action='store_false',
                         help='whether to use distilling in encoder, using this argument means not using distilling',
                         default=True)
@@ -223,23 +227,19 @@ def _get_parser(model_name=None):
     parser.add_argument('--dt_init_floor', type=float, default=1e-4)
     parser.add_argument('--bias', type=bool, default=True)
     parser.add_argument('--conv_bias', type=bool, default=True)
-    parser.add_argument('--pscan', action='store_true', help='use parallel scan mode or sequential mode when training', default=False)
-    parser.add_argument('--avg', action='store_true', help='avg pooling', default=False)
-    parser.add_argument('--max', action='store_true', help='max pooling', default=False)
+    parser.add_argument('--pscan', action='store_true', help='use parallel scan mode or sequential mode when training', default=True)
+    parser.add_argument('--avg', action='store_true', help='avg pooling', default=True)
+    parser.add_argument('--max', action='store_true', help='max pooling', default=True)
     parser.add_argument('--reduction', type=int, default=2)
-    parser.add_argument('--gddmlp', action='store_true', help='global data-dependent mlp', default=False)
-    parser.add_argument('--channel_mixup', action='store_true', help='channel mixup', default=False)
+    parser.add_argument('--gddmlp', action='store_true', help='global data-dependent mlp', default=True)
+    parser.add_argument('--channel_mixup', action='store_true', help='channel mixup', default=True)
     parser.add_argument('--sigma', type=float, default=1.0)
-
-    # basemodel arguments for adding to (or overriding) the common arguments
-    parser.add_argument('--basemodel', action='append', type=_basemodel_args, default=[], 
-                        help="name and arguments for a base model to be inlcuded in the combiner model [name --option1 val1 ...]")
 
     # Adaptive HPO (for Combiner, Adjuster)
     parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
     parser.add_argument('--hpo_interval', type=int, default=10, help="interval (timesteps >= 1) for Adaptive HPO")
     parser.add_argument('--max_hpo_eval', type=int, default=200, 
-                        help="max number of evaluation for HPO [default: 100]")
+                        help="max number of evaluation for HPO [default: 200]")
 
     # Adjuster
     parser.add_argument('--gpm_lookback_win', type=int, default=10, 
@@ -252,7 +252,7 @@ def _get_parser(model_name=None):
     parser.add_argument('--adj_eval_win', type=int, default=3, 
                         help="Size of window to evaluate loss when adjusting combiner prediction in the Adjuster]"
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
-    parser.add_argument('--gpm_cred_factor', type=int, default=10, 
+    parser.add_argument('--adj_cred_factor', type=int, default=10, 
                         help="relative credibility scaling factor [default: 1000]")
     parser.add_argument('--quantile', type=float, default=0.975, 
                         help="quantile level for the probabilistic prediction in the Adjuster [default: 0.975]")
@@ -317,19 +317,21 @@ def _create_base_model(configs, device, model_name) -> AbstractModel:
         'CMamba': CMamba  
     }
     other_models = {
+        'TimeMoE': TimeMoE,
         'EtsModel': EtsModel,
         'SarimaModel': SarimaModel,
-        'TimeMoE': TimeMoE,
+        'Drifter': DrifterModel, 
+        'Noiser': NoiseModel
     }
 
     if model_name in tslib_models:
         model = TSLibModel(configs, device, model_name, tslib_models[model_name])
     elif model_name in other_models:
         model = other_models[model_name]
-        if issubclass(model, StatisticalModel):
-            model = model(configs)
-        else:
+        if model_name == 'TimeMoE':
             model = model(configs, device)
+        else:
+            model = model(configs)
     else:
         raise ValueError(f"Model {model_name} is not supported.")
     return model
@@ -438,27 +440,25 @@ def run(args=None):
 
     # Trading Simulations ---------------
 
-    # Convert data to 'Ret'
     target_datatype = configs.target_datatype
     if target_datatype in ['Ret', 'LogRet']:
-        if target_datatype == 'Ret':
-            pass # OK
-        elif target_datatype == 'LogRet':
+        if target_datatype == 'LogRet':
+            # Convert data to 'Ret'
             y = np.exp(y) - 1
             y_hat_adj = np.exp(y_hat_adj) - 1
             y_hat_q_low = np.exp(y_hat_q_low) - 1
             y_hat_cbm = np.exp(y_hat_cbm) - 1
             for i in range(len(y_hat_bsm)):
                 y_hat_bsm[i] = np.exp(y_hat_bsm[i]) - 1
+        else: # if target_datatype == 'Ret':
+            pass # nothing to do
 
         # Simulation with 'Ret'
         # for consider_risk in [True, False]:
-        for apply_threshold_prob in [True, False]:
+        for apply_threshold_prob in [False, True]:
             for strategy in ['buy_and_hold', 'daily_buy_sell', 'buy_hold_sell_v1', 'buy_hold_sell_v2']:
                 df_sim_result = pd.DataFrame() 
                 df_sim_result['Adjuster'] = simulate_trading(y, y_hat_adj, strategy, devi_stddev, apply_threshold_prob, 
-                                                             buy_threshold=configs.buy_threshold_ret, buy_threshold_q=buy_threshold_q, fee_rate=configs.fee_rate)
-                df_sim_result['Adjuster_q'] = simulate_trading(y, y_hat_q_low, strategy, devi_stddev, apply_threshold_prob,
                                                              buy_threshold=configs.buy_threshold_ret, buy_threshold_q=buy_threshold_q, fee_rate=configs.fee_rate)
                 df_sim_result['Combiner'] = simulate_trading(y, y_hat_cbm, strategy, devi_stddev, apply_threshold_prob,
                                                              buy_threshold=configs.buy_threshold_ret, buy_threshold_q=buy_threshold_q, fee_rate=configs.fee_rate)
@@ -470,7 +470,7 @@ def run(args=None):
                                                  strategy+'_prob' if apply_threshold_prob else strategy, 
                                                  len(y))
     else:
-        logger.info(f"Trading simulation is not performed because target_datatype is {target_datatype}.")
+        logger.warning(f"Trading simulation for target type {target_datatype} is not supported now.")
 
     # clean up 
     _cleanup_gpu_cache(configs)

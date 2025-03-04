@@ -397,3 +397,60 @@ class TSLibModel(AbstractModel):
         # np.save(result_path + 'true.npy', trues)
         return preds
 
+
+
+# drift_factor :  +/- 10% = [-0.1 ~ 0.1] 
+class DrifterModel(AbstractModel):
+    def __init__(self, configs, drift_factor=0.1, duration=10, probability=0.1):
+        super().__init__(configs, "Drifter") 
+        self.drift_factor = drift_factor
+        self.duration = duration
+        self.probability = probability
+        self.drift_occurred = False
+        self.counter = 0
+
+    def train(self):
+        pass
+
+    def load_saved_model(self):
+        pass
+
+    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = False):
+        assert batch_x.shape[0]==1 and batch_y.shape[0]==1
+        truth = batch_y[0, -1, -1] 
+        pred = truth
+        if self.drift_occurred:
+            if self.counter < self.duration:
+                pred = truth * (1 + self.drift_factor * (1 + 0.1 * ((random.random() - 0.5) * 2))) 
+                self.counter += 1
+            else:
+                self.drift_occurred = False
+                self.counter = 0
+        elif self.probability > random.random():
+            self.drift_occurred = True
+        loss = self.criterion(torch.tensor([pred]), truth).item()
+        return pred, loss
+
+
+# noise_factor : (0.0, 0.1)  = 0 ~ 10% of noise
+class NoiseModel(AbstractModel):
+    def __init__(self, configs, noise_factor=0.05, probability=0.01):
+        super().__init__(configs, "Noiser") 
+        self.noise_factor = noise_factor
+        self.probability = probability
+
+    def train(self):
+        pass
+
+    def load_saved_model(self):
+        pass
+
+    def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = False):
+        assert batch_x.shape[0]==1 and batch_y.shape[0]==1
+        truth = batch_y[0, -1, -1] 
+        pred = truth 
+        if self.probability > random.random():
+            pred = truth + self.noise_factor * ((random.random() - 0.5) * 2)
+        loss = self.criterion(torch.tensor([pred]), truth).item()
+        return pred, loss
+    

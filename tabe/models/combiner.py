@@ -21,29 +21,14 @@ import tabe.utils.report as report
 from tabe.utils.mem_util import MemUtil
 from tabe.utils.logger import logger
 from tabe.utils.misc_util import OptimTracker
+import tabe.utils.weighting as weighting
+
 
 import warnings
 warnings.filterwarnings('ignore')
 
 
 _mem_util = MemUtil(rss_mem=False, python_mem=False)
-
-
-class _Metric:
-    MAE = 0
-    MSE = 1
-
-class _WeightingMethod:
-    Inverted = 0
-    SquaredInverted = 1
-    Softmax = 2
-
-class _DefaultHP:
-    lookback_window_size = 10
-    metric = _Metric.MAE
-    weighting_method = _WeightingMethod.Inverted
-    discount_factor = 1.0  # no discounting
-    smoothing_factor = 0.0  # no smoothing
 
 
 class CombinerModel(AbstractModel):
@@ -70,11 +55,11 @@ class CombinerModel(AbstractModel):
         self.basemodels = basemodels
         self.hp_space = {
             # 'cool_start': hp.quniform('cool_start', 0, num_comps-1, 1),
-            'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 1),
-            'max_components': hp.quniform('max_components', 1, len(basemodels), 1),
-            'metric': hp.choice('metric', [_Metric.MAE, _Metric.MSE]),
+            'lookback_window': hp.quniform('lookback_window', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 1),
+            'max_models': hp.quniform('max_models', 1, len(basemodels), 1),
+            'avg_method': hp.choice('avg_method', [weighting.AvgMethod.MEAN, weighting.AvgMethod.MEAN_SQUARED]),
             'weighting_method': hp.choice('weighting_method', 
-                                            [_WeightingMethod.Inverted, _WeightingMethod.SquaredInverted, _WeightingMethod.Softmax]),
+                                    [weighting.WeightingMethod.INVERTED, weighting.WeightingMethod.SQUARED_INVERTED, weighting.WeightingMethod.SOFTMAX]),
             'discount_factor':hp.uniform('discount_factor', 1.0, 1.5),
             'smoothing_factor': hp.uniform('smoothing_factor', 0.0, 1),
         }
@@ -85,68 +70,22 @@ class CombinerModel(AbstractModel):
         self.truths = None # the last 'y' values. Shape = (HPO_EVALUATION_PEROID)
 
 
-    def compute_basemodel_weights(self, hp_dict, models_loss, prev_comp_weights):
-        lookback_window_size = int(hp_dict['lookback_window_size']) if 'lookback_window_size' in hp_dict else _DefaultHP.lookback_window_size
-        metric = hp_dict['metric'] if 'metric' in hp_dict else _DefaultHP.metric
-        weighting_method = hp_dict['weighting_method'] if 'weighting_method' in hp_dict else _DefaultHP.weighting_method
-        discount_factor = hp_dict['discount_factor'] if 'discount_factor' in hp_dict else _DefaultHP.discount_factor
-        smoothing_factor = hp_dict['smoothing_factor'] if 'smoothing_factor' in hp_dict else _DefaultHP.smoothing_factor
+    def compute_basemodel_weights(self, hp_dict, model_losses, prev_model_weights):
+        lookback_window = int(hp_dict['lookback_window']) if 'lookback_window' in hp_dict else 10
+        avg_method = hp_dict['avg_method'] if 'avg_method' in hp_dict else weighting.AvgMethod.MEAN
+        weighting_method = hp_dict['weighting_method'] if 'weighting_method' in hp_dict else weighting.WeightingMethod.Softmax
+        discount_factor = hp_dict['discount_factor'] if 'discount_factor' in hp_dict else 1.0
+        smoothing_factor = hp_dict['smoothing_factor'] if 'smoothing_factor' in hp_dict else 0.0
+        scaling_factor = hp_dict['scaling_factor'] if 'scaling_factor' in hp_dict else 5
 
-        num_all_components = models_loss.shape[0]
-        if 'max_components' in hp_dict: 
-            max_components = min(int(hp_dict['max_components']), num_all_components)
+        num_all_models = model_losses.shape[0]
+        if 'max_models' in hp_dict: 
+            max_models = min(int(hp_dict['max_models']), num_all_models)
         else:
-            max_components = num_all_components
+            max_models = num_all_models
 
-        # TODO ! 
-        # cool_start = int(hp_dict['cool_start'])
-
-        comp_errors_window = models_loss[:, -lookback_window_size:]
-
-        # apply discounting to error_matrix, and compute the component_error
-        tau = lookback_window_size # NOTE : Do we need to separate tau and lookback_window_size?
-        try:
-            discount = np.power(discount_factor, np.arange(1,tau+1))
-            discounted_comp_error_window = np.multiply(comp_errors_window, discount)
-        except:
-            assert False, "Error in discounting!"
-            print("Error in discounting!")
-            discounted_comp_error_window = comp_errors_window
-
-        if metric == _Metric.MSE:
-            comp_errors = np.mean(np.power(discounted_comp_error_window,2), axis=1)
-        else: # metric == Metric.MAE:
-            comp_errors = np.mean(discounted_comp_error_window, axis=1)
-
-        comp_errors = np.array([1e-5 if i<1e-12 else i for i in comp_errors])
-
-        # compute the weights of component models by applying the weighting method
-        if weighting_method == _WeightingMethod.Softmax:
-            if np.sum(np.exp(-comp_errors)) <1e-10:
-                comp_errors = comp_errors / np.min(comp_errors)
-            basemodel_weights = np.exp(-comp_errors) / np.sum(np.exp(-comp_errors))
-        elif weighting_method == _WeightingMethod.Inverted:
-            basemodel_weights = np.power(comp_errors,-1) / np.sum(np.power(np.abs(comp_errors),-1))
-        else: # weighting_method == WeightingMethod.SquaredInverted':
-            basemodel_weights = np.power(comp_errors,-2) / np.sum(np.power(comp_errors,-2))
-
-        # NOTE : Necesssary? 
-        if np.isnan(basemodel_weights).any():
-            # print("Nan in basemodel_weights")
-            assert False, "Nan in basemodel_weights"
-            basemodel_weights = np.nan_to_num(basemodel_weights) / np.sum(basemodel_weights)
-
-        assert np.linalg.norm(np.sum(basemodel_weights) - 1.0) < 1e-3   
-
-        # smoothing the weights
-        if prev_comp_weights is not None:
-            basemodel_weights = smoothing_factor * prev_comp_weights + (1-smoothing_factor) * basemodel_weights
-
-        # apply max_components constraint : choose max_components components with the highest weights
-        if max_components < num_all_components:
-            chosen_indices = np.argpartition(basemodel_weights, -max_components)[-max_components:] 
-            basemodel_weights = np.array([basemodel_weights[i] if i in chosen_indices else 0 for i in range(num_all_components)])
-            basemodel_weights = basemodel_weights / np.sum(basemodel_weights)
+        basemodel_weights = weighting.compute_model_weights(model_losses, prev_model_weights, 
+            lookback_window, discount_factor, avg_method, weighting_method, smoothing_factor, max_models)
 
         return basemodel_weights
 
@@ -154,15 +93,15 @@ class CombinerModel(AbstractModel):
     def _optimize_HP(self, use_BOA=True, max_evals=100):
 
         # Objective function (loss function) for hyper-parameter optimization
-        # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
+        # Loss == Mean of the lossees in all timesteps in the period [lookback_window, len(y)]
         def _evaluate_hp(hp_dict):
-            lookback_window_size = int(hp_dict['lookback_window_size'])
+            lookback_window = int(hp_dict['lookback_window'])
             losses = []
             basemodel_weights = None
             t = self.MAX_LOOKBACK_WIN # We should start from the same timestep to evaluate the same period.
             while t < len(self.truths):
                 basemodel_weights = self.compute_basemodel_weights(
-                    hp_dict, self.basemodel_losses[:, t-lookback_window_size : t], basemodel_weights)
+                    hp_dict, self.basemodel_losses[:, t-lookback_window : t], basemodel_weights)
                 next_y_hat = np.dot(basemodel_weights, self.basemodel_losses[:, t:t+1])
                 next_y = self.truths[t]
                 losses.append(np.abs(next_y_hat - next_y))
@@ -172,7 +111,6 @@ class CombinerModel(AbstractModel):
             self.optim_tracker(mean_loss, hp_dict)
 
             return {
-                # TODO : add basemodel_weights 
                 'loss': mean_loss,         
                 'loss_variance': var_loss, 
                 'status': STATUS_OK
@@ -236,9 +174,9 @@ class CombinerModel(AbstractModel):
                 batch_x, batch_y, batch_x_mark, batch_y_mark, training) 
 
         basemodel_losses = np.concatenate((self.basemodel_losses, basemodel_losses), axis=1)
-        lookback_window_size = int(self.hp_dict['lookback_window_size'])
+        lookback_window = int(self.hp_dict['lookback_window'])
         basemodel_weights = self.compute_basemodel_weights(
-            self.hp_dict, basemodel_losses[:, -lookback_window_size:], self.basemodel_weights)
+            self.hp_dict, basemodel_losses[:, -lookback_window:], self.basemodel_weights)
         self.basemodel_weights = basemodel_weights
 
         # Adaptive HPO 
@@ -282,11 +220,11 @@ class CombinerModel(AbstractModel):
         # concatenate the last vali losses to test losses. 
         basemodel_losses = np.concatenate((self.basemodel_losses, basemodel_losses), axis=1)
 
-        lookback_window_size = int(self.hp_dict['lookback_window_size'])
+        lookback_window = int(self.hp_dict['lookback_window'])
         basemodel_weights = None
         for t in range(len(y)):
             basemodel_weights = self.compute_basemodel_weights(
-                self.hp_dict, basemodel_losses[:, -lookback_window_size:], basemodel_weights)
+                self.hp_dict, basemodel_losses[:, -lookback_window:], basemodel_weights)
             y_hat[t] = np.dot(basemodel_weights, basemodel_preds[:, t:t+1])
             weights_hist[t] = basemodel_weights
 

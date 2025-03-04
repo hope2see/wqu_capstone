@@ -91,48 +91,54 @@ class OptimTracker:
 
 # -----------
 
+def _args_to_str(args):
+    if args is None:
+        return ""
+    return " ".join(f"{k}={v}" for k, v in vars(args).items())
+
 def print_configs(configs):
     logger.info(f"\033[1m" + "TABE Config" + "\033[0m")
-    logger.info(f'  {"Model ID:":<20}{configs.model_id:<20}{"Model:":<20}{configs.model:<20}')
-    logger.info(f'  {"Task Name:":<20}{configs.task_name:<20}{"Is Training:":<20}{configs.is_training:<20}')
+    logger.info(f'  {"Model:":<20}{configs.model:<20}{"Model ID:":<20}{configs.model_id:<20}')
+    # logger.info(f'  {"Task Name:":<20}{configs.task_name:<20}{"Is Training:":<20}{configs.is_training:<20}')
     logger.info('')
 
-    logger.info(f"\033[1m" + "Adjuster Configs" + "\033[0m")
+    logger.info(f"\033[1m" + "Adjuster" + "\033[0m")
     if configs.adjuster is not None:
-        logger.info(f'  {configs.adjuster}')
+        logger.info(f'  {"gpm_lookback_win:":<20}{configs.gpm_lookback_win:<20}{"max_gp_opt_steps:":<20}{configs.max_gp_opt_steps}')
+        logger.info(f'  {"gpm_kernel:":<20}{configs.gpm_kernel:<20}{"gpm_noise:":<20}{configs.gpm_noise}')
+        logger.info(f'  {"adj_eval_win:":<20}{configs.adj_eval_win:<20}{"adj_cred_factor:":<20}{configs.adj_cred_factor}')
+        logger.info(f'  {"Adjuster args:":<12}{_args_to_str(configs.adjuster):<20}')
     logger.info('')
 
-    logger.info(f"\033[1m" + "Combiner Configs" + "\033[0m")
+    logger.info(f"\033[1m" + "Combiner" + "\033[0m")
     if configs.combiner is not None:
-        logger.info(f'  {configs.combiner}')
+        logger.info(f'  {"Combiner args:":<12}{_args_to_str(configs.combiner):<20}')
     logger.info('')
-
-    # logger.info(f"\033[1m" + "Adaptive HPO : {configs.adaptive_hpo}" + "\033[0m")
-    # if configs.adaptive_hpo:
-    #     logger.info(f'  {"interval:":<20}{configs.hpo_interval:<20}{"max_hpo_eval:":<20}{configs.label_len:<20}')
-    # logger.info()
 
     logger.info(f"\033[1m" + "Base Models" + "\033[0m")
     for (model_name, model_args) in configs.basemodel:
-        logger.info(f'   {model_name:<10}{model_args} ')
+        logger.info(f'   {model_name+" args:":<12}{_args_to_str(model_args):<20}')
     logger.info('')
 
     logger.info("\033[1m" + f"Data {configs.data:<20}" + "\033[0m")
-    logger.info(f'  {"Features:":<20}{configs.features:<20}{configs.target:<20}{"Freq:":<20}{configs.freq:<20}')
+    logger.info(f'  {"Features:":<20}{configs.features:<20}{"Target Column:":<20}{configs.target:<20}')
+    logger.info(f'  {"Target datatype:":<20}{configs.target_datatype:<20}{"Target Freq:":<20}{configs.freq:<20}')
     if configs.data == 'TABE_ONLINE':
         logger.info(f'  {"Asset:":<20}{configs.data_asset:<20}{"interval:":<20}{configs.data_interval:<20}')
         logger.info(f'  {"start_date:":<20}{configs.data_start_date:<20}{"end_date:":<20}{configs.data_end_date:<20}')
     else:
         logger.info(f'  {"Root Path:":<20}{configs.root_path:<20}{"Data Path:":<20}{configs.data_path:<20}')
-    logger.info(f'  {"Target datatype:":<20}{configs.target_datatype:<20}{"Target Column:":<20}')
-    logger.info(f'  {"Checkpoints:":<20}{configs.checkpoints:<20}')
+    logger.info('')
+
+    logger.info(f"\033[1m" + "Adaptive HPO : {configs.adaptive_hpo}" + "\033[0m")
+    if configs.adaptive_hpo:
+        logger.info(f'  {"interval:":<20}{configs.hpo_interval:<20}{"max_hpo_eval:":<20}{configs.max_hpo_eval:<20}')
     logger.info('')
 
     if configs.task_name in ['long_term_forecast', 'short_term_forecast']:
         logger.info("\033[1m" + "Forecasting Task" + "\033[0m")
         logger.info(f'  {"Seq Len:":<20}{configs.seq_len:<20}{"Label Len:":<20}{configs.label_len:<20}')
-        logger.info(f'  {"Pred Len:":<20}{configs.pred_len:<20}{"Seasonal Patterns:":<20}{configs.seasonal_patterns:<20}')
-        logger.info(f'  {"Inverse:":<20}{configs.inverse:<20}')
+        logger.info(f'  {"Pred Len:":<20}{configs.pred_len:<20}{"Inverse:":<20}{configs.inverse:<20}')
         logger.info('')
 
     # if configs.task_name == 'imputation':

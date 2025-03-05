@@ -3,6 +3,8 @@
 ### This project is implemented based on the open-sourced libaraies below. 
  - [Time-Series-Library](https://github.com/thuml/Time-Series-Library)
  - [Bayesian Optimization-Based Dynamic Ensemble (BODE)](https://github.com/Robinpredict/Bayesian-optimization-based-dynamic-ensemble-for-time-series-forecasting)
+ - [CMamba](https://github.com/zclzcl0223/CMamba)
+ - [TimeMoE](https://github.com/Time-MoE/Time-MoE))
  - [Pyro](https://pyro.ai/)
  - [PyTorch](https://pytorch.org/) 
 

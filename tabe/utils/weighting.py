@@ -26,8 +26,13 @@ def compute_model_weights(
     max_models = None # None or integer. maximum number of models for weighting. 
 ):
     num_all_models = model_losses.shape[0]    
-
     model_losses = model_losses[:, -lookback_window:]
+
+    epsilon = 1e-10 # tiny val to prevent dividision by zero, etc. 
+
+    # Normalize to 'percentage losses' that is relative losses compared to other models' losses at the same timestep. 
+    model_losses = np.abs(model_losses)
+    model_losses = np.divide(model_losses, np.sum(model_losses, axis=0)+epsilon)
 
     # apply discounting to error_matrix, and compute the component_error
     try:
@@ -41,14 +46,13 @@ def compute_model_weights(
     else: # MEAN
         model_losses = np.mean(model_losses, axis=1)
     
-    # Set lowerbound to float values for preventing problems like division by zero, etc. 
-    lowerbound = 1e-8 # tiny value 
-    model_losses = np.array([lowerbound if l < lowerbound else l for l in model_losses])
+    # Normalization again before applying softmax with scaling 
+    model_losses = np.divide(model_losses, np.sum(model_losses, axis=0)+epsilon)
 
     # compute the weights of models by applying the weighting method
     if weighting_method == WeightingMethod.SOFTMAX:
-        if np.sum(np.exp(-model_losses)) < 1e-10:
-            model_losses = model_losses / np.min(model_losses)
+        # if np.sum(np.exp(-model_losses)) < 1e-10:
+        #     model_losses = model_losses / np.min(model_losses)
         weights = np.exp(-softmax_scaling_factor * model_losses) / np.sum(np.exp(-softmax_scaling_factor * model_losses))
     elif weighting_method == WeightingMethod.INVERTED:
         weights = np.power(model_losses,-1) / np.sum(np.power(np.abs(model_losses),-1))

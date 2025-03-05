@@ -282,11 +282,11 @@ class AdjusterModel(AbstractModel):
             model_losses = np.array([my_loss, cbm_loss])
             prev_weights = np.array([self.credibility, 1.0-self.credibility])
             weights = weighting.compute_model_weights(model_losses, prev_weights, eval_period, 
-                                    softmax_scaling_factor=self.configs.adj_cred_factor, discount_factor=1.2)
+                                    softmax_scaling_factor=self.configs.adj_cred_factor, discount_factor=3.0)
             self.credibility = weights[0]
 
-            logger.info("Adj.predict : Adj Losses : " + "[" + ", ".join(f'{l:.5f}' for l in my_loss) + "]")
-            logger.info("Adj.predict : Cbm Losses : " + "[" + ", ".join(f'{l:.5f}' for l in cbm_loss) + "]")
+            logger.debug("Adj.predict : Adj Losses : " + "[" + ", ".join(f'{l:.5f}' for l in my_loss) + "]")
+            logger.debug("Adj.predict : Cbm Losses : " + "[" + ", ".join(f'{l:.5f}' for l in cbm_loss) + "]")
             logger.info(f'Adj.predict : adjuster_credibility = {self.credibility:.5f}')
 
         y_hat = y_hat_cbm + pred_deviation.item()

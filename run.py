@@ -104,7 +104,7 @@ def _get_parser(model_name=None):
         parser.add_argument('--seq_len', type=int, default=32, help='input sequence length')
         parser.add_argument('--label_len', type=int, default=32, help='start token length')
         parser.add_argument('--pred_len', type=int, default=1, help='prediction sequence length')
-        parser.add_argument('--inverse', action='store_true', help='inverse output data', default=False)
+        parser.add_argument('--inverse', action='store_true', help='inverse output data', default=True)
         parser.add_argument('--seasonal_patterns', type=str, default='Monthly', help='subset for M4') # used only for M4 dataset
 
         # imputation task
@@ -252,8 +252,8 @@ def _get_parser(model_name=None):
     parser.add_argument('--adj_eval_win', type=int, default=3, 
                         help="Size of window to evaluate loss when adjusting combiner prediction in the Adjuster]"
                             "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
-    parser.add_argument('--adj_cred_factor', type=int, default=10, 
-                        help="relative credibility scaling factor [default: 1000]")
+    parser.add_argument('--adj_cred_factor', type=int, default=30, 
+                        help="relative credibility scaling factor [default: 30]")
     parser.add_argument('--quantile', type=float, default=0.975, 
                         help="quantile level for the probabilistic prediction in the Adjuster [default: 0.975]")
 

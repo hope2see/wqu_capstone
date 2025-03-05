@@ -33,6 +33,8 @@ def compute_model_weights(
     # Normalize to 'percentage losses' that is relative losses compared to other models' losses at the same timestep. 
     model_losses = np.abs(model_losses)
     model_losses = np.divide(model_losses, np.sum(model_losses, axis=0)+epsilon)
+    model_losses += epsilon # to avoid the case that any loss is 0 ! (ex: synthetic model)
+
 
     # apply discounting to error_matrix, and compute the component_error
     try:
@@ -51,8 +53,6 @@ def compute_model_weights(
 
     # compute the weights of models by applying the weighting method
     if weighting_method == WeightingMethod.SOFTMAX:
-        # if np.sum(np.exp(-model_losses)) < 1e-10:
-        #     model_losses = model_losses / np.min(model_losses)
         weights = np.exp(-softmax_scaling_factor * model_losses) / np.sum(np.exp(-softmax_scaling_factor * model_losses))
     elif weighting_method == WeightingMethod.INVERTED:
         weights = np.power(model_losses,-1) / np.sum(np.power(np.abs(model_losses),-1))

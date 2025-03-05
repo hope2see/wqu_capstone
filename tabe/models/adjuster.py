@@ -274,7 +274,7 @@ class AdjusterModel(AbstractModel):
         if eval_period > 0:
             # la = MAE(self.y_hat[-eval_period:], self.truths[-eval_period:])   
             # lc = MAE(self.y_hat_cbm[-eval_period:], self.truths[-eval_period:])
-            # alpha = self.configs.adj_cred_factor # TODO : Fine tune! 
+            # alpha = self.configs.adj_scaling_factor # TODO : Fine tune! 
             # pct_loss_diff = (la - lc) / ((la + lc)/2.0 + 1e-6)
             # adjuster_credibility = 1.0 / (1.0 + np.exp(alpha * pct_loss_diff))
             my_loss = np.abs(self.y_hat[-eval_period:] - self.truths[-eval_period:])   
@@ -282,7 +282,7 @@ class AdjusterModel(AbstractModel):
             model_losses = np.array([my_loss, cbm_loss])
             prev_weights = np.array([self.credibility, 1.0-self.credibility])
             weights = weighting.compute_model_weights(model_losses, prev_weights, eval_period, 
-                                    softmax_scaling_factor=self.configs.adj_cred_factor, discount_factor=3.0)
+                                    softmax_scaling_factor=self.configs.adj_scaling_factor, discount_factor=3.0)
             self.credibility = weights[0]
 
             logger.debug("Adj.predict : Adj Losses : " + "[" + ", ".join(f'{l:.5f}' for l in my_loss) + "]")

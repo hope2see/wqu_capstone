@@ -105,7 +105,7 @@ def print_configs(configs):
     logger.info(f"\033[1m" + "Adjuster" + "\033[0m")
     logger.info(f'  {"gpm_lookback_win:":<20}{configs.gpm_lookback_win:<20}{"max_gp_opt_steps:":<20}{configs.max_gp_opt_steps}')
     logger.info(f'  {"gpm_kernel:":<20}{configs.gpm_kernel:<20}{"gpm_noise:":<20}{configs.gpm_noise}')
-    logger.info(f'  {"adj_eval_win:":<20}{configs.adj_eval_win:<20}{"adj_cred_factor:":<20}{configs.adj_cred_factor}')
+    logger.info(f'  {"adj_eval_win:":<20}{configs.adj_eval_win:<20}{"adj_scaling_factor:":<20}{configs.adj_scaling_factor}')
     logger.info(f'  {"Adjuster args:":<12}{_args_to_str(configs.adjuster):<20}')
     logger.info('')
 

@@ -55,22 +55,37 @@ class AdjusterModel(AbstractModel):
     def __init__(self, configs, combiner_model):
         super().__init__(configs, "Adjuster")
         self.combiner_model = combiner_model # must've been trained already
-        self._set_gpm_kernel()
         self.gpm = None # Gaussain Process Model 
-        self.hp_space = {
-            'lookback_window_size': hp.choice('lookback_window_size', [5, 10, 30, 50, 100, self.UNLIMITED_LOOKBACK_WIN]), 
-            # 'lookback_window_size': hp.quniform('lookback_window_size', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 2),
-            # 'noise': hp.uniform('noise', 0.0, 0.4),  # NOTE : noise doesn't seem to effect meaningfully 
-        }
-        self.hp_dict = { # currently active hyper-parameters
-            'lookback_window_size':self.configs.gpm_lookback_win,
-            'noise':self.configs.gpm_noise
-            }
-        self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
+        self._set_gpm_kernel()
+        self.gpm_noise = self.configs.gpm_noise
+        self.y_hat = np.array([])
         self.y_hat_cbm = None # the last predictions of combiner. shape = (HPO_EVALUATION_PEROID)
         self.truths = None # the last 'y' values. shape = (HPO_EVALUATION_PEROID)
-        self.y_hat = np.array([])
         self.credibility = 0.5 # relative credibility against combiner model. Initially neutral value 0.5
+        self.hpo_policy = self.configs.hpo_policy
+        if self.hpo_policy == 0 :
+            self.hp_dict = {
+                'gpm_lookback_win':self.configs.gpm_lookback_win,
+                # 'lookback_window':self.configs.lookback_win, # for weighting 
+                # 'discount_factor':self.configs.discount_factor,
+                # 'avg_method':self.configs.avg_method,
+                # 'weighting_method':self.configs.weighting_method,
+                # 'scaling_factor':self.configs.scaling_factor,
+                # 'smoothing_factor':self.configs.smoothing_factor
+                }
+        else:
+            self.hp_space = {
+                'gpm_lookback_win': hp.choice('gpm_lookback_win', [5, 10, 30, 50, 100, self.UNLIMITED_LOOKBACK_WIN]), 
+                # 'lookback_window': hp.quniform('lookback_window', 1, 10, 1),
+                # 'discount_factor':hp.uniform('discount_factor', 1.0, 2.0),
+                # 'avg_method': hp.choice('avg_method', [weighting.AvgMethod.MEAN, weighting.AvgMethod.MEAN_SQUARED]),
+                # 'weighting_method': hp.choice('weighting_method', 
+                #                         [weighting.WeightingMethod.INVERTED, weighting.WeightingMethod.SQUARED_INVERTED, weighting.WeightingMethod.SOFTMAX]),
+                # 'scaling_factor':hp.choice('scaling_factor', [10, 30, 50, 100]),
+                # 'smoothing_factor': hp.uniform('smoothing_factor', 0.0, 0.2),
+            }
+            self.hp_dict = None
+            self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
 
 
     def _set_gpm_kernel(self):
@@ -82,7 +97,6 @@ class AdjusterModel(AbstractModel):
             'Linear'    : (gp.kernels.Linear, False),
             'Brownian'  : (gp.kernels.Brownian, False),
         }
-
         input_dim = 1
         variance = torch.tensor(1)
         lengthscale = torch.tensor(1.5)
@@ -90,27 +104,26 @@ class AdjusterModel(AbstractModel):
         kernel_class = kernels[kernel_name][0]
         need_lengthscale = kernels[kernel_name][1]
         if need_lengthscale:
-            self.kernel = kernel_class(input_dim=input_dim, variance=variance, lengthscale=lengthscale)
+            self.gpm_kernel = kernel_class(input_dim=input_dim, variance=variance, lengthscale=lengthscale)
         else:
-            self.kernel = kernel_class(input_dim=input_dim, variance=variance)
+            self.gpm_kernel = kernel_class(input_dim=input_dim, variance=variance)
 
 
     def _train_new_gpmodel(self, hp_dict, y):
         pyro.clear_param_store() # NOTE : Need to do everytime? 
 
-        lookback_window_size = int(hp_dict['lookback_window_size'])
-        noise = int(hp_dict['noise'])
-        if lookback_window_size != self.UNLIMITED_LOOKBACK_WIN and len(y) > lookback_window_size+1:
-            y = y[-(lookback_window_size+1):]
+        gpm_lookback_win = int(hp_dict['gpm_lookback_win'])
+        if gpm_lookback_win != self.UNLIMITED_LOOKBACK_WIN and len(y) > gpm_lookback_win+1:
+            y = y[-(gpm_lookback_win+1):]
         X = y[:-1]
         y = y[1:]
-        gpm = gp.models.GPRegression(X, y, self.kernel, 
-                                            noise=torch.tensor(noise), mean_function=None, jitter=1e-6)
+        gpm = gp.models.GPRegression(X, y, self.gpm_kernel, 
+                                            noise=torch.tensor(self.gpm_noise), mean_function=None, jitter=1e-6)
         gpm.set_data(X, y)
         self.optimizer = torch.optim.Adam(gpm.parameters(), lr=0.005)
         self.loss_fn = pyro.infer.Trace_ELBO().differentiable_loss
         
-        optim_tracker = OptimTracker(use_early_stop=True, patience=self.configs.patience, verbose=False, save_to_file=False)
+        optim_tracker = OptimTracker(use_early_stop=True, patience=self.configs.max_gp_opt_patience, verbose=False, save_to_file=False)
         num_batch = 10
         for step in range(1, self.configs.max_gp_opt_steps, num_batch):
             loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
@@ -118,7 +131,7 @@ class AdjusterModel(AbstractModel):
             optim_tracker(mean_loss, None)
             if optim_tracker.early_stop:
                 break
-        logger.debug(f"Adj.HPO: when lb_win_size={lookback_window_size}, after training {step} times, loss={mean_loss:.4f}")
+        logger.debug(f"Adj.HPO: when lb_win_size={gpm_lookback_win}, after training {step} times, loss={mean_loss:.4f}")
         
         return gpm
  
@@ -131,13 +144,13 @@ class AdjusterModel(AbstractModel):
         X = torch.cat([gpm.X, gpm.y[-1:]]) # Add the last y to the end of 'X's
         y = torch.cat([gpm.y, y]) # Add new observation to the end of 'y's
 
-        lookback_window_size = int(hp_dict['lookback_window_size'])
-        if lookback_window_size != self.UNLIMITED_LOOKBACK_WIN and len(y) > lookback_window_size+1:
-            X = X[-lookback_window_size:]
-            y = y[-lookback_window_size:]
+        gpm_lookback_win = int(hp_dict['gpm_lookback_win'])
+        if gpm_lookback_win != self.UNLIMITED_LOOKBACK_WIN and len(y) > gpm_lookback_win+1:
+            X = X[-gpm_lookback_win:]
+            y = y[-gpm_lookback_win:]
         gpm.set_data(X, y)
 
-        optim_tracker = OptimTracker(use_early_stop=True, patience=self.configs.patience, verbose=False, save_to_file=False)
+        optim_tracker = OptimTracker(use_early_stop=True, patience=self.configs.max_gp_opt_patience, verbose=False, save_to_file=False)
         num_batch = 10
         for step in range(1, self.configs.max_gp_opt_steps, num_batch):
             loss = gp.util.train(gpm, self.optimizer, self.loss_fn, num_steps=num_batch)
@@ -145,7 +158,7 @@ class AdjusterModel(AbstractModel):
             optim_tracker(mean_loss, None)
             if optim_tracker.early_stop:
                 break                
-        logger.debug(f"Adj.HPO: when lb_win_size={lookback_window_size}, after training  {step} times, loss={mean_loss:.4f}")
+        logger.debug(f"Adj.HPO: when lb_win_size={gpm_lookback_win}, after training  {step} times, loss={mean_loss:.4f}")
         return gpm
 
 
@@ -163,7 +176,7 @@ class AdjusterModel(AbstractModel):
                      max_evals=10):
         
         # Objective function (loss function) for hyper-parameter optimization
-        # Loss == Mean of the lossees in all timesteps in the period [lookback_window_size, len(y)]
+        # Loss == Mean of the lossees in all timesteps in the period [gpm_lookback_win, len(y)]
         def _evaluate_hp(hp_dict):
             deviations = (self.truths - self.y_hat_cbm)[:-1] # exclude the last one, becuause it is the target to predict
             assert len(deviations) > self.HPO_EVAL_PEROID
@@ -191,21 +204,11 @@ class AdjusterModel(AbstractModel):
 
         time_now = time.time()
 
-        self.optim_tracker = OptimTracker(use_early_stop=False, patience=self.configs.patience, verbose=True, save_to_file=False)
-        if search_alg == 0 : # Grid-like
-            hp_dict = {'lookback_window_size':0, 'noise':self.configs.gpm_noise}
-            # for w in range(self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN+1, 30):
-            # for w in [80, 50, 30, 10]:
-            for w in [self.UNLIMITED_LOOKBACK_WIN, 100, 50, 10]:
-                hp_dict['lookback_window_size'] = w
-                _evaluate_hp(hp_dict)
-            trials = None
-            self.best_hp = self.optim_tracker.best_model
-        else: # BOA or Random
-            trials = Trials()
-            algo = tpe.suggest if search_alg == 1 else rand.suggest
-            self.best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
-                    trials=trials, rstate=np.random.default_rng(1), verbose=True)
+        self.optim_tracker = OptimTracker(use_early_stop=False, patience=self.configs.max_gp_opt_patience, verbose=True, save_to_file=False)
+        trials = Trials()
+        algo = tpe.suggest if search_alg == 1 else rand.suggest
+        self.best_hp = fmin(_evaluate_hp, self.hp_space, algo=algo, max_evals=max_evals, 
+                trials=trials, rstate=np.random.default_rng(1), verbose=True)
 
         spent_time = (time.time() - time_now) 
 
@@ -236,17 +239,11 @@ class AdjusterModel(AbstractModel):
         self.y_hat_cbm = y_hat_cbm
         self.truths = y
 
-        if self.configs.adaptive_hpo:
-            self.hp_dict, trials = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
+        if self.hpo_policy != 0: 
+            self.hp_dict, trials = self._optimize_HP(search_alg=1, max_evals=self.configs.max_hpo_eval)
             if trials is not None:
                 report.plot_hpo_result(trials, "HyperParameter Optimization for Adjuster",
                                 self._get_result_path()+"/hpo_result.pdf")
-            logger.info(f"Adjuster HPO : lookback_window_size = {self.hp_dict['lookback_window_size']}")
-        else:
-            self.hp_dict = {
-                'lookback_window_size':self.configs.gpm_lookback_win,
-                'noise':self.configs.gpm_noise
-                }
 
         # Gaussian Process model is to used to predict next deviation from past predctions
         # We exclude the last deviation for training, becuause that is the actual target. 
@@ -264,25 +261,20 @@ class AdjusterModel(AbstractModel):
         y_hat_cbm, y_hat_bsm = self.combiner_model.proceed_onestep(
             batch_x, batch_y, batch_x_mark, batch_y_mark, training)                
         
-        # Apply relative_credibility ---------------------------------------
-        # Relative Credibility Ratio : value range = (0,..,1.0)
-        # Model A's Credibilty over model B =  1 / (1 + exp( alpha * (La-Lb) / ((La+Lb)/2 + epsilon) ) )
-        #   La, Lb : Loss of model A, Loss of model B 
-        #   alpha : tuning (scaling) factor 
-        #   epsilon : tiny value to prevent divide-by-zero 
-        eval_period = min(len(self.y_hat), self.configs.adj_eval_win)
+        # get credibility (or weight over combiner) of Adjuster model 
+        eval_period = min(len(self.y_hat), self.configs.lookback_win)
         if eval_period > 0:
-            # la = MAE(self.y_hat[-eval_period:], self.truths[-eval_period:])   
-            # lc = MAE(self.y_hat_cbm[-eval_period:], self.truths[-eval_period:])
-            # alpha = self.configs.adj_scaling_factor # TODO : Fine tune! 
-            # pct_loss_diff = (la - lc) / ((la + lc)/2.0 + 1e-6)
-            # adjuster_credibility = 1.0 / (1.0 + np.exp(alpha * pct_loss_diff))
             my_loss = np.abs(self.y_hat[-eval_period:] - self.truths[-eval_period:])   
             cbm_loss = np.abs(self.y_hat_cbm[-eval_period:] - self.truths[-eval_period:])
             model_losses = np.array([my_loss, cbm_loss])
             prev_weights = np.array([self.credibility, 1.0-self.credibility])
-            weights = weighting.compute_model_weights(model_losses, prev_weights, eval_period, 
-                                    softmax_scaling_factor=self.configs.adj_scaling_factor, discount_factor=3.0)
+            weights = weighting.compute_model_weights(model_losses, prev_weights, 
+                                    lookback_window=eval_period, 
+                                    discount_factor=self.configs.discount_factor, 
+                                    avg_method=self.configs.avg_method, 
+                                    weighting_method=self.configs.weighting_method,
+                                    softmax_scaling_factor=self.configs.scaling_factor, 
+                                    smoothing_factor=self.configs.smoothing_factor)
             self.credibility = weights[0]
 
             logger.debug("Adj.predict : Adj Losses : " + "[" + ", ".join(f'{l:.5f}' for l in my_loss) + "]")
@@ -291,12 +283,11 @@ class AdjusterModel(AbstractModel):
 
         y_hat = y_hat_cbm + pred_deviation.item()
                      
-        use_choice_policy = False # TODO ! 
-        if use_choice_policy: 
-            final_pred = y_hat if self.credibility > 0.5 else y_hat_cbm
-        else: # mix the prediction 
-            # adjust combinerModel's prediction by adding expected deviation 
-            final_pred = y_hat_cbm + (pred_deviation.item() * self.credibility)
+        # use_choice_policy = False # TODO ! 
+        # if use_choice_policy: 
+        #     final_pred = y_hat if self.credibility > 0.5 else y_hat_cbm        
+        # adjust combinerModel's prediction by adding expected deviation 
+        final_pred = y_hat_cbm + (pred_deviation.item() * self.credibility)
 
         # calculate the actuall loss of next timestep
         y = batch_y[0, -1, -1] 
@@ -310,10 +301,10 @@ class AdjusterModel(AbstractModel):
             self.gpm = self._forward_onestep(self.hp_dict, self.gpm, true_deviation)
 
         # Adaptive HPO 
-        if self.configs.adaptive_hpo:
+        if self.configs.hpo_policy == 2: 
             self.hpo_counter += 1
             if self.hpo_counter == self.configs.hpo_interval:
-                self.hp_dict, _ = self._optimize_HP(search_alg=0, max_evals=self.configs.max_hpo_eval)
+                self.hp_dict, _ = self._optimize_HP(search_alg=1, max_evals=self.configs.max_hpo_eval)
                 self.hpo_counter = 0                
 
         # logger.info(f'Adj.predict : final_pred={final_pred:.5f}, y_hat={y_hat:.5f}, y_hat_cbm={y_hat_cbm:.5f}')

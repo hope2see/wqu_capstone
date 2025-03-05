@@ -6,19 +6,45 @@ desc='chosen_models_BTC'
 
 
 for gpm_lookback_win in 10 30 50 -1; do 
-for adj_eval_win in 3 5 10; do 
-for adj_scaling_factor in 5 10 50 100; do 
+for lookback_window in 3 5 10; do 
+for discount_factor in 1.0 1.3 1.5 2.0; do 
+for avg_method in 0 1; do 
+for weighting_method in 0 1; do
 python -u run.py \
     --model TABE \
-    --model_id $test_name'_('$desc')_'$gpm_lookback_win'_'$adj_eval_win'_'$adj_scaling_factor \
+    --model_id $test_name'_('$desc')_'$gpm_lookback_win'_'$lookback_window'_'$discount_factor'_'$avg_method'_'$weighting_method'_'$scaling_factor \
     --data TABE_FILE --data_path 'BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv' \
     --train_epochs 3  \
-    --adjuster '--patience 30 --gpm_lookback_win '$gpm_lookback_win' --adj_eval_win  '$adj_eval_win' --adj_scaling_factor '$adj_scaling_factor \
+    --adjuster '--gpm_lookback_win '$gpm_lookback_win' --lookback_window  '$lookback_window' '$discount_factor' --avg_method '$avg_method' --weighting_method '$weighting_method' --scaling_factor '$scaling_factor \
     --basemodel 'EtsModel' \
-    --basemodel 'SarimaModel' \
-    --basemodel 'TimeMoE' \
     --basemodel 'Drifter' \
     --basemodel 'Noiser'
 done 
 done
 done 
+done
+done 
+
+
+for gpm_lookback_win in 10 30 50 -1; do 
+for lookback_window in 3 5 10; do 
+for discount_factor in 1.0 1.3 1.5 2.0; do 
+for avg_method in 0 1; do 
+for weighting_method in 2; do
+for scaling_factor in 1 10 30 100; do 
+python -u run.py \
+    --model TABE \
+    --model_id $test_name'_('$desc')_'$gpm_lookback_win'_'$lookback_window'_'$discount_factor'_'$avg_method'_'$weighting_method'_'$scaling_factor \
+    --data TABE_FILE --data_path 'BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv' \
+    --train_epochs 3  \
+    --adjuster '--gpm_lookback_win '$gpm_lookback_win' --lookback_window  '$lookback_window' '$discount_factor' --avg_method '$avg_method' --weighting_method '$weighting_method' --scaling_factor '$scaling_factor \
+    --basemodel 'EtsModel' \
+    --basemodel 'Drifter' \
+    --basemodel 'Noiser'
+done 
+done
+done 
+done
+done 
+done 
+

@@ -53,30 +53,43 @@ class CombinerModel(AbstractModel):
     def __init__(self, configs, basemodels):
         super().__init__(configs, "Combiner")
         self.basemodels = basemodels
-        self.hp_space = {
-            # 'cool_start': hp.quniform('cool_start', 0, num_comps-1, 1),
-            'lookback_window': hp.quniform('lookback_window', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 1),
-            'max_models': hp.quniform('max_models', 1, len(basemodels), 1),
-            'avg_method': hp.choice('avg_method', [weighting.AvgMethod.MEAN, weighting.AvgMethod.MEAN_SQUARED]),
-            'weighting_method': hp.choice('weighting_method', 
-                                    [weighting.WeightingMethod.INVERTED, weighting.WeightingMethod.SQUARED_INVERTED, weighting.WeightingMethod.SOFTMAX]),
-            'discount_factor':hp.uniform('discount_factor', 1.0, 1.5),
-            'smoothing_factor': hp.uniform('smoothing_factor', 0.0, 1),
-        }
-        self.hp_dict = None # currently active hyper-parameters
-        self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
         self.basemodel_weights = None # lastly applied weights for basemodels
         self.basemodel_losses = None # the last basemodel_losses. Shape = (len(basemodels), HPO_EVALUATION_PEROID)
         self.truths = None # the last 'y' values. Shape = (HPO_EVALUATION_PEROID)
+        self.hpo_policy = self.configs.hpo_policy
+        if self.hpo_policy == 0 :
+            self.hp_dict = {
+                'lookback_window':self.configs.lookback_win, # for weighting 
+                'discount_factor':self.configs.discount_factor,
+                'avg_method':self.configs.avg_method,
+                'weighting_method':self.configs.weighting_method,
+                'scaling_factor':self.configs.scaling_factor,
+                'smoothing_factor':self.configs.smoothing_factor, 
+                'max_models': len(basemodels)
+                }
+        else:
+            self.hp_space = {
+                # 'cool_start': hp.quniform('cool_start', 0, num_comps-1, 1),
+                'lookback_window': hp.quniform('lookback_window', self.MIN_LOOKBACK_WIN, self.MAX_LOOKBACK_WIN, 1),
+                'discount_factor':hp.uniform('discount_factor', 1.0, 2.0),
+                'avg_method': hp.choice('avg_method', [weighting.AvgMethod.MEAN, weighting.AvgMethod.MEAN_SQUARED]),
+                'weighting_method': hp.choice('weighting_method', 
+                                        [weighting.WeightingMethod.INVERTED, weighting.WeightingMethod.SQUARED_INVERTED, weighting.WeightingMethod.SOFTMAX]),
+                'scaling_factor':hp.choice('scaling_factor', [10, 30, 50, 100]),
+                'smoothing_factor': hp.uniform('smoothing_factor', 0.0, 0.2),
+                'max_models': hp.quniform('max_models', 1, len(basemodels), 1),
+            }
+            self.hp_dict = None
+            self.hpo_counter = 0 # used for counting timesteps for Adaptive HPO
 
 
-    def compute_basemodel_weights(self, hp_dict, model_losses, prev_model_weights):
-        lookback_window = int(hp_dict['lookback_window']) if 'lookback_window' in hp_dict else 10
-        avg_method = hp_dict['avg_method'] if 'avg_method' in hp_dict else weighting.AvgMethod.MEAN
-        weighting_method = hp_dict['weighting_method'] if 'weighting_method' in hp_dict else weighting.WeightingMethod.Softmax
-        discount_factor = hp_dict['discount_factor'] if 'discount_factor' in hp_dict else 1.0
-        smoothing_factor = hp_dict['smoothing_factor'] if 'smoothing_factor' in hp_dict else 0.0
-        scaling_factor = hp_dict['scaling_factor'] if 'scaling_factor' in hp_dict else 5
+    def compute_basemodel_weights(self, hp_dict, model_losses, prev_model_weights):        
+        lookback_window = int(hp_dict['lookback_window']) if 'lookback_window' in hp_dict else self.configs.lookback_window
+        discount_factor = hp_dict['discount_factor'] if 'discount_factor' in hp_dict else self.configs.discount_factor
+        avg_method = hp_dict['avg_method'] if 'avg_method' in hp_dict else self.configs.avg_method
+        weighting_method = hp_dict['weighting_method'] if 'weighting_method' in hp_dict else self.configs.weighting_method
+        scaling_factor = hp_dict['scaling_factor'] if 'scaling_factor' in hp_dict else self.configs.scaling_factor
+        smoothing_factor = hp_dict['smoothing_factor'] if 'smoothing_factor' in hp_dict else self.configs.smoothing_factor
 
         num_all_models = model_losses.shape[0]
         if 'max_models' in hp_dict: 
@@ -85,7 +98,13 @@ class CombinerModel(AbstractModel):
             max_models = num_all_models
 
         basemodel_weights = weighting.compute_model_weights(model_losses, prev_model_weights, 
-            lookback_window, discount_factor, avg_method, weighting_method, smoothing_factor, max_models)
+                                    lookback_window=lookback_window, 
+                                     discount_factor=discount_factor,
+                                    avg_method=avg_method, 
+                                    weighting_method=weighting_method,
+                                    softmax_scaling_factor=scaling_factor, 
+                                    smoothing_factor=smoothing_factor, 
+                                    max_models=max_models)
 
         return basemodel_weights
 
@@ -150,17 +169,16 @@ class CombinerModel(AbstractModel):
         spent_time = (time.time() - time_now) 
         logger.info(f"CombinerModel.train() : {spent_time:.4f} sec elapsed for getting base models' predictions")
 
-        # Hyperparameter Optimization -------------------------------------
         assert self.HPO_PERIOD <= len(train_loader), \
                     f'length of train data ({len(train_loader)}) should be longer than HPO_PERIOD({self.HPO_PERIOD})'     
         self.basemodel_losses = basemodel_losses[:, -self.HPO_PERIOD:]
         self.truths = train_dataset.data_y[-self.HPO_PERIOD:, -1]
-        hp_boa, trials_boa = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
 
-        report.plot_hpo_result(trials_boa, "HyperParameter Optimization for Combiner",
-                            self._get_result_path()+"/hpo_result.pdf")
-    
-        self.hp_dict = hp_boa
+        # Hyperparameter Optimization -------------------------------------
+        if self.hpo_policy != 0: 
+            self.hp_dict, trials = self._optimize_HP(max_evals=self.configs.max_hpo_eval)
+            report.plot_hpo_result(trials, "HyperParameter Optimization for Combiner",
+                                self._get_result_path()+"/hpo_result.pdf")
         
 
     def proceed_onestep(self, batch_x, batch_y, batch_x_mark, batch_y_mark, training: bool = True):
@@ -180,7 +198,7 @@ class CombinerModel(AbstractModel):
         self.basemodel_weights = basemodel_weights
 
         # Adaptive HPO 
-        if self.configs.adaptive_hpo:
+        if self.configs.hpo_policy == 2:
             assert self.HPO_PERIOD <= basemodel_losses.shape[1], \
                         f'length of basemodel data ({basemodel_losses.shape[1]}) should be longer than HPO_PERIOD({self.HPO_PERIOD})'            
             self.basemodel_losses = basemodel_losses[:, -self.HPO_PERIOD:]

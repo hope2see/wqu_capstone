@@ -9,7 +9,7 @@ python -u run.py \
     --model_id $test_name'_('$desc')_'$interval \
     --data TABE_FILE --data_path 'BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv' \
     --train_epochs 3  \
-    --adjuster '--patience 30 --adaptive_hpo --hpo_interval '$interval' --max_hpo_eval 20' \
+    --adjuster '--hpo_policy 2 --hpo_interval '$interval' --max_hpo_eval 20' \
     --basemodel 'EtsModel' \
     --basemodel 'SarimaModel' \
     --basemodel 'TimeMoE' \

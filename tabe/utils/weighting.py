@@ -21,8 +21,8 @@ def compute_model_weights(
     discount_factor = 1.0, # for exponentially discounting losses by time distance. [1,1.5] The higher value, the more discounting.
     avg_method = AvgMethod.MEAN, 
     weighting_method = WeightingMethod.SOFTMAX, 
-    smoothing_factor = 0.0, # To make weights change smoothly in time axis. [0,1)  Higher value makes smoother change.  
     softmax_scaling_factor = 1.0, # 1 or higher. 1 means no scaling. The higher value generates more diverged weights for small loss differences.
+    smoothing_factor = 0.0, # To make weights change smoothly in time axis. [0,1)  Higher value makes smoother change.  
     max_models = None # None or integer. maximum number of models for weighting. 
 ):
     num_all_models = model_losses.shape[0]    

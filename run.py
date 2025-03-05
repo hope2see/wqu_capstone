@@ -235,11 +235,20 @@ def _get_parser(model_name=None):
     parser.add_argument('--channel_mixup', action='store_true', help='channel mixup', default=True)
     parser.add_argument('--sigma', type=float, default=1.0)
 
-    # Adaptive HPO (for Combiner, Adjuster)
-    parser.add_argument('--adaptive_hpo', default=False, action="store_true", help="apply Adaptive HPO in combiner model")
-    parser.add_argument('--hpo_interval', type=int, default=10, help="interval (timesteps >= 1) for Adaptive HPO")
+    # HPO (for Combiner, Adjuster)
+    parser.add_argument('--hpo_policy', type=int, default=0, help="HPO policy. 0: no HPO, 1: once when training, 2: adaptive")
     parser.add_argument('--max_hpo_eval', type=int, default=200, 
-                        help="max number of evaluation for HPO [default: 200]")
+                        help="max number of evaluation for a HPO [default: 200]")
+    parser.add_argument('--hpo_interval', type=int, default=10, help="interval (timesteps >= 1) for Adaptive HPO")
+    
+    # Weighting models (for Combiner, Adjuster)
+    parser.add_argument('--lookback_win', type=int, default=10, help="")
+    parser.add_argument('--discount_factor', type=float, default=1.5, help="")
+    parser.add_argument('--avg_method', type=int, default=0, help="")
+    parser.add_argument('--weighting_method', type=int, default=2, help="")
+    parser.add_argument('--scaling_factor', type=int, default=30, help="")
+    parser.add_argument('--smoothing_factor', type=float, default=0.0, help="")
+    
 
     # Adjuster
     parser.add_argument('--gpm_lookback_win', type=int, default=10, 
@@ -249,11 +258,8 @@ def _get_parser(model_name=None):
     parser.add_argument('--gpm_noise', type=float, default=0.1, help='noise for Gaussian Process Kernel [0.0~]')
     parser.add_argument('--max_gp_opt_steps', type=int, default=5000, 
                         help="max number of optimization steps for the Gaussian Process model in the Adjuster [default: 5000]")
-    parser.add_argument('--adj_eval_win', type=int, default=3, 
-                        help="Size of window to evaluate loss when adjusting combiner prediction in the Adjuster]"
-                            "When 'adpative_hpo' applied, gpm_lookback_win is adpatively changed")
-    parser.add_argument('--adj_scaling_factor', type=int, default=30, 
-                        help="relative credibility scaling factor [default: 30]")
+    parser.add_argument('--max_gp_opt_patience', type=int, default=30, 
+                        help="max patience in the optimization steps without improvement [default: 30]")
     parser.add_argument('--quantile', type=float, default=0.975, 
                         help="quantile level for the probabilistic prediction in the Adjuster [default: 0.975]")
 

@@ -105,7 +105,6 @@ def print_configs(configs):
     logger.info(f"\033[1m" + "Adjuster" + "\033[0m")
     logger.info(f'  {"gpm_lookback_win:":<20}{configs.gpm_lookback_win:<20}{"max_gp_opt_steps:":<20}{configs.max_gp_opt_steps}')
     logger.info(f'  {"gpm_kernel:":<20}{configs.gpm_kernel:<20}{"gpm_noise:":<20}{configs.gpm_noise}')
-    logger.info(f'  {"adj_eval_win:":<20}{configs.adj_eval_win:<20}{"adj_scaling_factor:":<20}{configs.adj_scaling_factor}')
     logger.info(f'  {"Adjuster args:":<12}{_args_to_str(configs.adjuster):<20}')
     logger.info('')
 
@@ -128,8 +127,8 @@ def print_configs(configs):
         logger.info(f'  {"Root Path:":<20}{configs.root_path:<20}{"Data Path:":<20}{configs.data_path:<20}')
     logger.info('')
 
-    logger.info(f"\033[1m" + "Adaptive HPO : {configs.adaptive_hpo}" + "\033[0m")
-    if configs.adaptive_hpo:
+    logger.info(f"\033[1m" + "HPO Policy = {configs.hpo_policy}" + "\033[0m")
+    if configs.hpo_policy == 2:
         logger.info(f'  {"interval:":<20}{configs.hpo_interval:<20}{"max_hpo_eval:":<20}{configs.max_hpo_eval:<20}')
     logger.info('')
 

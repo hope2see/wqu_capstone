@@ -9,7 +9,7 @@ python -u run.py \
     --model_id $test_name'_('$desc')_'$kernel \
     --data TABE_FILE --data_path 'BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv' \
     --train_epochs 3  \
-    --adjuster '--patience 30 --gpm_kernel '$kernel \
+    --adjuster '--gpm_kernel '$kernel \
     --basemodel 'EtsModel' \
     --basemodel 'SarimaModel' \
     --basemodel 'DLinear --batch_size 8' \

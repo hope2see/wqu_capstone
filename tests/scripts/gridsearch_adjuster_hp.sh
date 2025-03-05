@@ -15,7 +15,8 @@ python -u run.py \
     --model_id $test_name'_('$desc')_'$gpm_lookback_win'_'$lookback_window'_'$discount_factor'_'$avg_method'_'$weighting_method'_'$scaling_factor \
     --data TABE_FILE --data_path 'BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv' \
     --train_epochs 3  \
-    --adjuster '--gpm_lookback_win '$gpm_lookback_win' --lookback_window  '$lookback_window' '$discount_factor' --avg_method '$avg_method' --weighting_method '$weighting_method' --scaling_factor '$scaling_factor \
+    --adjuster '--gpm_lookback_win '$gpm_lookback_win' --lookback_window  '$lookback_window' '$discount_factor' --avg_method '$avg_method' --weighting_method '$weighting_method \
+    --combiner '--lookback_win 1 --discount_factor 3.0 --avg_method 0 --weighting_method 1 --max_models 2' \
     --basemodel 'EtsModel' \
     --basemodel 'Drifter' \
     --basemodel 'Noiser'
@@ -38,6 +39,7 @@ python -u run.py \
     --data TABE_FILE --data_path 'BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv' \
     --train_epochs 3  \
     --adjuster '--gpm_lookback_win '$gpm_lookback_win' --lookback_window  '$lookback_window' '$discount_factor' --avg_method '$avg_method' --weighting_method '$weighting_method' --scaling_factor '$scaling_factor \
+    --combiner '--lookback_win 1 --discount_factor 3.0 --avg_method 0 --weighting_method 1 --max_models 2' \
     --basemodel 'EtsModel' \
     --basemodel 'Drifter' \
     --basemodel 'Noiser'

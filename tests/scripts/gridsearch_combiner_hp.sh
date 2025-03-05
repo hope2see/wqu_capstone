@@ -15,7 +15,7 @@ python -u run.py \
     --data TABE_FILE --data_path 'BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv' \
     --train_epochs 3  \
     --adjuster '--lookback_win 3 --discount_factor 1.5 --avg_method 0 --weighting_method 2 --scaling_factor 30 --smoothing_factor 0.0' \
-    --combiner '--lookback_win '$lookback_win' --discount_factor '$discount_factor' --avg_method '$avg_method' --weighting_method '$weighting_method' --scaling_factor '$scaling_factor \
+    --combiner '--lookback_win '$lookback_win' --discount_factor '$discount_factor' --avg_method '$avg_method' --weighting_method '$weighting_method \
     --basemodel 'EtsModel' \
     --basemodel 'SarimaModel' \
     --basemodel 'TimeMoE' \

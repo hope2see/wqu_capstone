@@ -65,7 +65,7 @@ class CombinerModel(AbstractModel):
                 'weighting_method':self.configs.weighting_method,
                 'scaling_factor':self.configs.scaling_factor,
                 'smoothing_factor':self.configs.smoothing_factor, 
-                'max_models': len(basemodels)
+                'max_models': self.configs.max_models
                 }
         else:
             self.hp_space = {

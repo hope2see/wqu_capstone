@@ -12,6 +12,7 @@ python -u run.py \
     --data TABE_FILE --data_path 'BTC-USD_LogRet_2021-01-01_2023-01-01_1d.csv' \
     --train_epochs 3  \
     --combiner '--hpo_policy 2 --hpo_interval '$interval' --max_hpo_eval 100' \
+    --adjuster '--lookback_win 3 --discount_factor 1.5 --avg_method 0 --weighting_method 2 --scaling_factor 30 --smoothing_factor 0.0' \
     --basemodel 'EtsModel' \
     --basemodel 'SarimaModel' \
     --basemodel 'TimeMoE' \

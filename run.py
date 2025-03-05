@@ -248,6 +248,7 @@ def _get_parser(model_name=None):
     parser.add_argument('--weighting_method', type=int, default=2, help="")
     parser.add_argument('--scaling_factor', type=int, default=30, help="")
     parser.add_argument('--smoothing_factor', type=float, default=0.0, help="")
+    parser.add_argument('--max_models', type=float, default=0.0, help="")
     
 
     # Adjuster

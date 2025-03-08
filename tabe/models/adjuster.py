@@ -98,7 +98,8 @@ class AdjusterModel(AbstractModel):
             'Brownian'  : (gp.kernels.Brownian, False),
         }
         input_dim = 1
-        variance = torch.tensor(1)
+        # TODO ; optimize the HPs of GP
+        variance = torch.tensor(1) 
         lengthscale = torch.tensor(1.5)
         kernel_name = self.configs.gpm_kernel
         kernel_class = kernels[kernel_name][0]
@@ -138,7 +139,7 @@ class AdjusterModel(AbstractModel):
 
     def _forward_onestep(self, hp_dict, gpm, y):
         assert y.shape[0]==1, "Allowed to add only one observation.."
-        # pyro.clear_param_store() # NOTE : Need to do everytime? 
+        pyro.clear_param_store() 
 
         # incorporate new observation(s)
         X = torch.cat([gpm.X, gpm.y[-1:]]) # Add the last y to the end of 'X's
@@ -166,8 +167,19 @@ class AdjusterModel(AbstractModel):
         last_deviation = gpm.y[-1:] 
         with torch.no_grad():
             exp_deviation, cov = gpm(last_deviation, full_cov=False, noiseless=False)
-        sd = cov.diag().sqrt()  
-        logger.info(f"Adjuster._predict_next(): exp_dev={exp_deviation.item():.6f}, sd_dev={sd.item():.6f}")
+
+        # NOTE 
+        # It seems not good to estimate stddev estimation by GP
+        # sd = cov.diag().sqrt()  
+        # report.plot_gpmodel(gpm, filepath="./temp/gpmodel_analysis.png")
+
+        # Temporary fix until proper update --------------
+        deviations = (self.truths - self.y_hat_cbm)[:-1] # exclude next truth 
+        stat_window = 20 if len(self.truths) > 20 else len(deviations)
+        sd = deviations[-stat_window:].std() 
+        # -----------------------------------------------
+
+        logger.info(f"Adjuster._predict_next(): exp_dev={exp_deviation.item():.4f}, sd_dev={sd.item():.4f}")
         return exp_deviation, sd
 
 
@@ -331,10 +343,12 @@ class AdjusterModel(AbstractModel):
 
         report.plot_gpmodel(self.gpm, filepath=self._get_result_path()+"/gpmodel_analysis.pdf")
 
+        # TODO : check if dev_stddev is correctly used? 
         z_val = norm.ppf(self.configs.quantile) 
-        y_hat_q_low = y_hat - devi_stddev * z_val
+        y_hat_q_low = y_hat - devi_stddev * z_val 
         y_hat_q_high = y_hat + devi_stddev * z_val
 
+        # TODO : check if dev_stddev is correctly used? 
         z_val = norm.ppf(self.configs.buy_threshold_prob) 
         buy_threshold_q = y_hat - devi_stddev * z_val
 

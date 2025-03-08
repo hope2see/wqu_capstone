@@ -19,8 +19,7 @@ python -u run.py \
     --basemodel 'CMamba --batch_size 64 --lradj type3 --learning_rate 0.0005 --d_model 128 --d_ff 128' \
     --basemodel 'TimeMoE' \
     --combiner '--lookback_win 1 --discount_factor 3.0 --avg_method 0 --weighting_method 1 --max_models 2' \
-    --adjuster '--lookback_win 1 --discount_factor 3.0 --avg_method 0 --weighting_method 1 --max_models 2' 
-    # --adjuster '--lookback_win 3 --discount_factor 1.5 --avg_method 0 --weighting_method 2 --scaling_factor 30 --smoothing_factor 0.0'
+    --adjuster '--gpm_lookback_win 3 --lookback_win 1 --discount_factor 3.0 --avg_method 0 --weighting_method 1 --max_models 2' 
 
 
 desc='all_models_SPY'
@@ -39,5 +38,4 @@ python -u run.py \
     --basemodel 'CMamba --batch_size 64 --lradj type3 --learning_rate 0.0005 --d_model 128 --d_ff 128' \
     --basemodel 'TimeMoE' \
     --combiner '--lookback_win 1 --discount_factor 3.0 --avg_method 0 --weighting_method 1 --max_models 2' \
-    --adjuster '--lookback_win 1 --discount_factor 3.0 --avg_method 0 --weighting_method 1 --max_models 2' 
-    # --adjuster '--lookback_win 3 --discount_factor 1.5 --avg_method 0 --weighting_method 2 --scaling_factor 30 --smoothing_factor 0.0'
+    --adjuster '--gpm_lookback_win 3 --lookback_win 1 --discount_factor 3.0 --avg_method 0 --weighting_method 1 --max_models 2' 
